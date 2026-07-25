@@ -6,7 +6,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
-    <title>Java Web IDE - Interactive Terminal & Visual Debugger</title>
+    <title>Java Web IDE - Enterprise Edition</title>
     <!-- Monaco Editor CSS -->
     <link rel="stylesheet" data-name="vs/editor" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.38.0/min/vs/editor/editor.main.min.css">
     <!-- xterm.js Terminal CSS -->
@@ -17,69 +17,107 @@
     
     <style>
         * { box-sizing: border-box; }
-        body { font-family: 'Inter', system-ui, -apple-system, sans-serif; margin: 0; padding: 12px; background: #18181c; color: #e0e0e6; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+        body { font-family: 'Inter', system-ui, -apple-system, sans-serif; margin: 0; padding: 10px; background: #121215; color: #e0e0e6; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
         
-        .top-bar { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; height: 44px; background: #202026; padding: 0 14px; border-radius: 8px; border: 1px solid #2e2e38; }
-        input, select { padding: 7px 12px; background: #121215; border: 1px solid #363644; color: #fff; border-radius: 6px; font-family: inherit; font-size: 13px; outline: none; transition: border-color 0.2s; }
+        .top-bar { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; height: 44px; background: #19191e; padding: 0 12px; border-radius: 8px; border: 1px solid #2e2e38; }
+        input, select { padding: 6px 10px; background: #121215; border: 1px solid #363644; color: #fff; border-radius: 6px; font-family: inherit; font-size: 12px; outline: none; transition: border-color 0.2s; }
         input:focus, select:focus { border-color: #6366f1; }
-        button { padding: 7px 16px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px; color: white; font-family: inherit; display: inline-flex; align-items: center; gap: 6px; transition: all 0.2s ease; }
+        button { padding: 6px 14px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 12px; color: white; font-family: inherit; display: inline-flex; align-items: center; gap: 6px; transition: all 0.2s ease; }
         button:hover { opacity: 0.9; transform: translateY(-1px); }
         button:active { transform: translateY(0); }
+        
         .btn-run { background: linear-gradient(135deg, #10b981, #059669); box-shadow: 0 2px 8px rgba(16, 185, 129, 0.25); }
         .btn-debug { background: linear-gradient(135deg, #f59e0b, #d97706); box-shadow: 0 2px 8px rgba(245, 158, 11, 0.25); }
+        .btn-test { background: linear-gradient(135deg, #6366f1, #4f46e5); box-shadow: 0 2px 8px rgba(99, 102, 241, 0.25); }
+        .btn-ai { background: linear-gradient(135deg, #ec4899, #8b5cf6); box-shadow: 0 2px 8px rgba(236, 72, 153, 0.25); }
+        .btn-export { background: #27272a; border: 1px solid #3f3f46; color: #e4e4e7; }
         
-        .status-badge { display: flex; align-items: center; gap: 6px; font-size: 12px; margin-left: auto; background: #121215; padding: 4px 10px; border-radius: 20px; border: 1px solid #2e2e38; }
+        .status-badge { display: flex; align-items: center; gap: 6px; font-size: 11px; margin-left: auto; background: #121215; padding: 4px 10px; border-radius: 20px; border: 1px solid #2e2e38; }
         .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #ef4444; }
         .status-dot.connected { background: #10b981; box-shadow: 0 0 6px #10b981; }
 
         /* Debugger Controls Bar */
-        .debug-bar { display: none; gap: 8px; background: #2a2a34; padding: 4px 12px; border-radius: 6px; align-items: center; border: 1px solid #3d3d4e; }
-        .debug-bar button { padding: 4px 10px; font-size: 12px; background: #3b3b4f; }
+        .debug-bar { display: none; gap: 6px; background: #2a2a34; padding: 4px 10px; border-radius: 6px; align-items: center; border: 1px solid #3d3d4e; }
+        .debug-bar button { padding: 4px 8px; font-size: 11px; background: #3b3b4f; }
         .debug-bar button:hover { background: #4c4c63; }
 
-        .workspace-container { display: flex; flex: 1; gap: 10px; height: calc(100vh - 74px); }
+        .workspace-container { display: flex; flex: 1; gap: 8px; height: calc(100vh - 84px); }
 
         /* Sidebar Tree View */
-        .sidebar { width: 220px; background: #202026; border: 1px solid #2e2e38; border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; }
-        .sidebar-header { padding: 10px 12px; font-weight: 600; background: #19191e; border-bottom: 1px solid #2e2e38; display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #a1a1aa; letter-spacing: 0.5px; }
-        .file-item { padding: 8px 12px; cursor: pointer; font-size: 13px; display: flex; justify-content: space-between; transition: background 0.15s; color: #c4c4ce; }
-        .file-item:hover { background: #2a2a34; }
-        .file-item.active { background: #2e2e3d; font-weight: 600; color: #818cf8; border-left: 3px solid #6366f1; }
+        .sidebar { width: 230px; background: #19191e; border: 1px solid #2e2e38; border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; }
+        .sidebar-header { padding: 8px 10px; font-weight: 600; background: #121215; border-bottom: 1px solid #2e2e38; display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: #a1a1aa; letter-spacing: 0.5px; }
+        .file-item { padding: 7px 10px; cursor: pointer; font-size: 12px; display: flex; justify-content: space-between; transition: background 0.15s; color: #c4c4ce; border-bottom: 1px solid #202026; }
+        .file-item:hover { background: #24242d; }
+        .file-item.active { background: #2a2a38; font-weight: 600; color: #818cf8; border-left: 3px solid #6366f1; }
+
+        /* Tabbed Open Files Bar */
+        .editor-tabs { display: flex; background: #121215; border-bottom: 1px solid #2e2e38; height: 32px; overflow-x: auto; }
+        .tab-item { padding: 6px 12px; font-size: 12px; background: #19191e; color: #94a3b8; border-right: 1px solid #2e2e38; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none; }
+        .tab-item.active { background: #1e1e24; color: #f8fafc; border-top: 2px solid #6366f1; font-weight: 500; }
+        .tab-close { font-size: 10px; color: #64748b; border-radius: 50%; width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; }
+        .tab-close:hover { background: #ef4444; color: #fff; }
 
         /* Main Workspace Layout */
-        .main-pane { flex: 1; display: flex; flex-direction: column; gap: 10px; height: 100%; }
-        .editor-row { display: flex; flex: 3; gap: 10px; min-height: 300px; }
+        .main-pane { flex: 1; display: flex; flex-direction: column; gap: 8px; height: 100%; }
+        .editor-row { display: flex; flex: 3; gap: 8px; min-height: 280px; }
         
-        #editor-container { flex: 3; border: 1px solid #2e2e38; border-radius: 8px; position: relative; height: 100%; min-height: 300px; background: #1e1e1e; overflow: hidden; }
-        #editor { width: 100%; height: 100%; position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
+        #editor-container { flex: 3; border: 1px solid #2e2e38; border-radius: 8px; position: relative; height: 100%; min-height: 280px; background: #1e1e1e; overflow: hidden; display: flex; flex-direction: column; }
+        #editor { flex: 1; width: 100%; height: 100%; }
         
         /* Breakpoint Margin Glyph */
         .breakpoint-glyph { background: #ef4444; width: 10px !important; height: 10px !important; border-radius: 50%; margin-left: 5px; margin-top: 5px; box-shadow: 0 0 6px rgba(239, 68, 68, 0.8); }
 
         /* Variables & Debug Side Panel */
-        .debug-panel { flex: 1; background: #202026; border: 1px solid #2e2e38; border-radius: 8px; padding: 12px; font-family: 'JetBrains Mono', monospace; font-size: 12px; overflow-y: auto; color: #a1a1aa; }
-        .debug-panel h4 { margin: 0 0 10px 0; color: #f59e0b; border-bottom: 1px solid #2e2e38; padding-bottom: 6px; font-size: 12px; letter-spacing: 0.5px; }
+        .debug-panel { flex: 1; background: #19191e; border: 1px solid #2e2e38; border-radius: 8px; padding: 10px; font-family: 'JetBrains Mono', monospace; font-size: 11px; overflow-y: auto; color: #a1a1aa; }
+        .debug-panel h4 { margin: 0 0 8px 0; color: #f59e0b; border-bottom: 1px solid #2e2e38; padding-bottom: 4px; font-size: 11px; letter-spacing: 0.5px; }
 
-        /* Bottom Terminal Container */
-        .terminal-pane { flex: 2; background: #0c0c0e; border: 1px solid #2e2e38; border-radius: 8px; padding: 8px; display: flex; flex-direction: column; min-height: 180px; position: relative; }
-        .terminal-header { font-size: 11px; font-weight: 600; color: #71717a; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; display: flex; justify-content: space-between; }
-        #terminal { flex: 1; width: 100%; height: 100%; overflow: hidden; position: relative; }
+        /* Bottom Tabbed Console Area */
+        .bottom-panel { flex: 2; background: #19191e; border: 1px solid #2e2e38; border-radius: 8px; display: flex; flex-direction: column; min-height: 200px; overflow: hidden; }
+        .panel-nav { display: flex; background: #121215; border-bottom: 1px solid #2e2e38; height: 32px; }
+        .panel-tab { padding: 6px 14px; font-size: 11px; font-weight: 600; color: #71717a; cursor: pointer; display: flex; align-items: center; gap: 6px; border-right: 1px solid #2e2e38; text-transform: uppercase; letter-spacing: 0.5px; }
+        .panel-tab.active { background: #19191e; color: #818cf8; border-top: 2px solid #6366f1; }
+        .panel-body { flex: 1; position: relative; overflow: hidden; display: none; }
+        .panel-body.active { display: flex; flex-direction: column; }
+
+        #terminal { width: 100%; height: 100%; background: #0c0c0e; padding: 6px; }
+
+        /* Unit Test Explorer Panel */
+        .test-panel { padding: 12px; overflow-y: auto; height: 100%; display: flex; flex-direction: column; gap: 10px; }
+        .test-summary-bar { display: flex; gap: 12px; align-items: center; background: #121215; padding: 8px 12px; border-radius: 6px; border: 1px solid #2e2e38; font-weight: 600; font-size: 12px; }
+        .badge-pass { background: rgba(16, 185, 129, 0.2); color: #10b981; padding: 2px 8px; border-radius: 4px; border: 1px solid rgba(16, 185, 129, 0.3); }
+        .badge-fail { background: rgba(239, 68, 68, 0.2); color: #ef4444; padding: 2px 8px; border-radius: 4px; border: 1px solid rgba(239, 68, 68, 0.3); }
+        
+        /* AI Assistant Panel */
+        .ai-panel { padding: 12px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; height: 100%; }
+        .ai-card { background: #121215; border: 1px solid #2e2e38; border-radius: 6px; padding: 10px; font-size: 12px; line-height: 1.5; }
+        .ai-card h5 { margin: 0 0 6px 0; color: #ec4899; }
+
+        /* Dependency Panel */
+        .dep-panel { padding: 12px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; height: 100%; }
+        .dep-item { display: flex; justify-content: space-between; padding: 6px 10px; background: #121215; border: 1px solid #2e2e38; border-radius: 4px; font-size: 12px; font-family: monospace; }
+
+        /* Status Bar at Bottom */
+        .status-bar { display: flex; gap: 16px; align-items: center; height: 22px; background: #19191e; border: 1px solid #2e2e38; border-radius: 4px; padding: 0 10px; font-size: 11px; color: #a1a1aa; margin-top: 4px; }
     </style>
 </head>
 <body>
 
+    <!-- Top Navigation Bar -->
     <div class="top-bar">
-        <input type="text" id="jdkPath" placeholder="JDK Path (auto-detected if blank)" style="width: 260px;" />
-        <label style="font-size: 13px; color: #a1a1aa;">Main Class:</label>
+        <input type="text" id="jdkPath" placeholder="JDK Path (auto-detected if blank)" style="width: 240px;" />
+        <label style="font-size: 12px; color: #a1a1aa;">Main Class:</label>
         <select id="targetClassSelect"></select>
 
         <button class="btn-run" onclick="runInteractive()">▶ Run Code</button>
-        <button class="btn-debug" onclick="startDebugger()">🐞 Debug Program</button>
+        <button class="btn-debug" onclick="startDebugger()">🐞 Debug</button>
+        <button class="btn-test" onclick="runUnitTests()">🧪 Unit Tests</button>
+        <button class="btn-ai" onclick="openAIFixer()">🤖 AI Fixer</button>
+        <button class="btn-export" onclick="exportProjectZip()">💾 Export ZIP</button>
 
         <!-- Debug Toolbar -->
         <div id="debugBar" class="debug-bar">
-            <span style="color:#f59e0b; font-weight:600; font-size:12px;">DEBUGGING:</span>
-            <button onclick="sendDebugCommand('cont')">▶ Continue (F5)</button>
+            <span style="color:#f59e0b; font-weight:600; font-size:11px;">DEBUG:</span>
+            <button onclick="sendDebugCommand('cont')">▶ Cont (F5)</button>
             <button onclick="sendDebugCommand('step')">⤵ Step Into (F11)</button>
             <button onclick="sendDebugCommand('next')">↷ Step Over (F10)</button>
         </div>
@@ -95,7 +133,10 @@
         <div class="sidebar">
             <div class="sidebar-header">
                 <span>PROJECT FILES</span>
-                <button style="padding:3px 8px; font-size:11px; background:#3f3f46;" onclick="createNewFile()">+ File</button>
+                <div>
+                    <button style="padding:2px 6px; font-size:10px; background:#3f3f46;" onclick="createNewFile()">+ File</button>
+                    <button style="padding:2px 6px; font-size:10px; background:#6366f1;" onclick="createUnitTestFile()">+ Test</button>
+                </div>
             </div>
             <div id="fileList"></div>
         </div>
@@ -103,8 +144,12 @@
         <div class="main-pane">
             <div class="editor-row">
                 <div id="editor-container">
+                    <!-- Tabbed Open Files Row -->
+                    <div id="editorTabs" class="editor-tabs"></div>
+                    <!-- Monaco Code Editor -->
                     <div id="editor"></div>
                 </div>
+
                 <!-- Debug Variables Panel -->
                 <div class="debug-panel">
                     <h4>VARIABLES & STACK</h4>
@@ -112,18 +157,71 @@
                 </div>
             </div>
             
-            <!-- Terminal Container -->
-            <div class="terminal-pane">
-                <div class="terminal-header">
-                    <span>INTERACTIVE TERMINAL</span>
-                    <button style="padding:2px 6px; font-size:10px; background:#27272a; color:#a1a1aa;" onclick="clearTerminal()">Clear</button>
+            <!-- Bottom Multi-Panel Console -->
+            <div class="bottom-panel">
+                <div class="panel-nav">
+                    <div class="panel-tab active" onclick="switchBottomTab('terminal')">💻 Terminal</div>
+                    <div class="panel-tab" onclick="switchBottomTab('test')">🧪 Unit Tests</div>
+                    <div class="panel-tab" onclick="switchBottomTab('ai')">🤖 AI Assistant</div>
+                    <div class="panel-tab" onclick="switchBottomTab('dep')">📦 Dependencies</div>
                 </div>
-                <div id="terminal"></div>
+
+                <!-- 1. Interactive Terminal -->
+                <div id="panel-terminal" class="panel-body active">
+                    <div id="terminal"></div>
+                </div>
+
+                <!-- 2. Unit Test Runner Panel -->
+                <div id="panel-test" class="panel-body">
+                    <div class="test-panel">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <button class="btn-test" onclick="runUnitTests()">▶ Run All JUnit Tests</button>
+                            <span id="testDuration" style="font-size:11px; color:#a1a1aa;"></span>
+                        </div>
+                        <div id="testSummary" class="test-summary-bar">Click 'Run All JUnit Tests' to scan and execute test suite...</div>
+                        <div id="testDetails" style="font-family:monospace; font-size:12px; white-space:pre-wrap; background:#121215; padding:10px; border-radius:6px; flex:1; overflow-y:auto; color:#d4d4d8;"></div>
+                    </div>
+                </div>
+
+                <!-- 3. AI Assistant Panel -->
+                <div id="panel-ai" class="panel-body">
+                    <div class="ai-panel">
+                        <div style="display:flex; gap:8px;">
+                            <button class="btn-ai" onclick="openAIFixer()">⚡ Auto-Fix Syntax Error</button>
+                            <button class="btn-export" onclick="aiGenerateTests()">✨ Generate Unit Tests</button>
+                            <button class="btn-export" onclick="aiExplainCode()">📖 Explain Active Class</button>
+                        </div>
+                        <div id="aiOutput" class="ai-card">
+                            <h5>AI CODING ASSISTANT</h5>
+                            Select an option above to generate unit tests, explain code, or auto-fix compilation errors.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 4. Dependency Manager Panel -->
+                <div id="panel-dep" class="panel-body">
+                    <div class="dep-panel">
+                        <div style="display:flex; gap:8px;">
+                            <input type="text" id="depUrlInput" placeholder="Enter JAR URL (e.g. https://repo1.maven.org/maven2/.../gson-2.10.1.jar)" style="flex:1;" />
+                            <button class="btn-run" onclick="addDependency()">+ Add JAR</button>
+                        </div>
+                        <h5 style="margin:6px 0 0 0; color:#818cf8;">ACTIVE CLASSPATH DEPENDENCIES:</h5>
+                        <div id="depList"></div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- Scripts with Fallbacks -->
+    <!-- IDE Status Bar -->
+    <div class="status-bar">
+        <span>JDK: <strong id="statusJdk" style="color:#10b981;">Auto</strong></span>
+        <span>Execution: <strong id="statusExecTime">-- ms</strong></span>
+        <span>Syntax Linter: <strong id="statusLint" style="color:#10b981;">Clean</strong></span>
+        <span style="margin-left:auto;" id="editorCursorPos">Line 1, Col 1</span>
+    </div>
+
+    <!-- Scripts with Universal Fallbacks -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.38.0/min/vs/loader.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/5.3.0/xterm.min.js"></script>
     
@@ -149,12 +247,10 @@
                         });
                         this.xterm.open(this.container);
                     } catch (e) {
-                        console.warn("xterm init failed, falling back to Native Terminal:", e);
                         this.isXterm = false;
                         this.setupFallback();
                     }
                 } else {
-                    console.warn("xterm.js not loaded. Using Native HTML Terminal fallback.");
                     this.isXterm = false;
                     this.setupFallback();
                 }
@@ -213,11 +309,13 @@
 
         let editor, term, ws;
         let activeFileId = '1';
+        let openTabIds = ['1'];
         let breakpoints = [];
         let debugDecorations = [];
+        let lintTimeout = null;
+        let lastErrorOutput = "";
 
-        // Sample Program Source Code
-        const SAMPLE_JAVA_CODE = `import java.util.Scanner;
+        const SAMPLE_MAIN_CODE = `import java.util.Scanner;
 
 public class Main {
     public static void main(String[] args) {
@@ -241,13 +339,27 @@ public class Main {
     }
 }`;
 
+        const SAMPLE_TEST_CODE = `import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
+
+public class MainTest {
+
+    @Test
+    void testCalculateSum() {
+        int result = Main.calculateSum(10, 20);
+        assertEquals(30, result, "10 + 20 should equal 30");
+    }
+
+    @Test
+    void testNegativeSum() {
+        int result = Main.calculateSum(-5, 5);
+        assertEquals(0, result, "-5 + 5 should equal 0");
+    }
+}`;
+
         let files = [
-            {
-                id: '1',
-                name: 'Main.java',
-                path: 'Main.java',
-                content: SAMPLE_JAVA_CODE
-            }
+            { id: '1', name: 'Main.java', path: 'Main.java', content: SAMPLE_MAIN_CODE },
+            { id: '2', name: 'MainTest.java', path: 'MainTest.java', content: SAMPLE_TEST_CODE }
         ];
 
         // 1. Initialize Universal Terminal
@@ -285,6 +397,9 @@ public class Main {
                     const msg = JSON.parse(event.data);
                     if (msg.type === 'output' && term) {
                         term.write(msg.data);
+                        if (msg.data.includes('Compilation Error')) {
+                            lastErrorOutput = msg.data;
+                        }
                     }
                     
                     if (msg.type === 'debug_event' && msg.event === 'stopped') {
@@ -312,13 +427,14 @@ public class Main {
 
         connectWebSocket();
 
-        // 3. Render Sidebar First
+        // 3. Render Sidebar & Tabs
         renderSidebar();
+        renderTabs();
+        loadDependencies();
 
         // 4. Initialize Monaco Editor Safely
         function initMonaco() {
             if (typeof require === 'undefined') {
-                console.warn("Monaco loader.min.js not available. Using fallback textarea.");
                 showFallbackTextarea();
                 return;
             }
@@ -343,14 +459,19 @@ public class Main {
 
                     editor.onDidChangeModelContent(() => {
                         syncEditorContent();
+                        triggerLinter();
                     });
 
+                    editor.onDidChangeCursorPosition(e => {
+                        document.getElementById('editorCursorPos').textContent = `Line ${e.position.lineNumber}, Col ${e.position.column}`;
+                    });
+
+                    triggerLinter();
+
                 } catch (err) {
-                    console.warn("Monaco Editor Initialization Error:", err);
                     showFallbackTextarea();
                 }
             }, function(err) {
-                console.warn("Failed to load Monaco vs/editor:", err);
                 showFallbackTextarea();
             });
         }
@@ -368,14 +489,63 @@ public class Main {
 
         function showFallbackTextarea() {
             const container = document.getElementById('editor-container');
-            container.innerHTML = `<textarea id="fallback-editor" style="width:100%; height:100%; background:#1e1e1e; color:#00ff66; font-family:JetBrains Mono, monospace; padding:12px; border:none; outline:none; resize:none;">${files[0].content}</textarea>`;
+            container.innerHTML = `
+                <div id="editorTabs" class="editor-tabs"></div>
+                <textarea id="fallback-editor" style="width:100%; height:100%; background:#1e1e1e; color:#00ff66; font-family:JetBrains Mono, monospace; padding:12px; border:none; outline:none; resize:none;">${files[0].content}</textarea>
+            `;
+            renderTabs();
             const textarea = document.getElementById('fallback-editor');
             textarea.addEventListener('input', () => {
                 syncEditorContent();
+                triggerLinter();
             });
         }
 
         window.addEventListener('load', initMonaco);
+
+        // Real-time Syntax Error Checking (Linter)
+        function triggerLinter() {
+            if (lintTimeout) clearTimeout(lintTimeout);
+            lintTimeout = setTimeout(async () => {
+                try {
+                    const jdkPath = document.getElementById('jdkPath').value;
+                    const res = await fetch('/api/lint', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ files, jdkPath })
+                    });
+                    const data = await res.json();
+                    const statusLint = document.getElementById('statusLint');
+                    
+                    if (data.markers && data.markers.length > 0) {
+                        if (statusLint) {
+                            statusLint.textContent = `${data.markers.length} Errors`;
+                            statusLint.style.color = '#ef4444';
+                        }
+                        if (editor && window.monaco) {
+                            const activeMarkers = data.markers.filter(m => m.fileId === activeFileId);
+                            const monacoMarkers = activeMarkers.map(m => ({
+                                startLineNumber: m.startLineNumber,
+                                startColumn: m.startColumn,
+                                endLineNumber: m.endLineNumber,
+                                endColumn: m.endColumn,
+                                message: m.message,
+                                severity: monaco.MarkerSeverity.Error
+                            }));
+                            monaco.editor.setModelMarkers(editor.getModel(), 'java', monacoMarkers);
+                        }
+                    } else {
+                        if (statusLint) {
+                            statusLint.textContent = 'Clean';
+                            statusLint.style.color = '#10b981';
+                        }
+                        if (editor && window.monaco) {
+                            monaco.editor.setModelMarkers(editor.getModel(), 'java', []);
+                        }
+                    }
+                } catch (e) {}
+            }, 800);
+        }
 
         function toggleBreakpoint(lineNumber) {
             const currentFile = files.find(f => f.id === activeFileId);
@@ -420,6 +590,7 @@ public class Main {
 
         async function runInteractive() {
             syncEditorContent();
+            switchBottomTab('terminal');
             if (term) {
                 term.clear();
                 term.write('\r\n\x1b[33mCompiling project...\x1b[0m\r\n');
@@ -429,11 +600,9 @@ public class Main {
             const mainClass = document.getElementById('targetClassSelect').value || 'Main';
             const jdkPath = document.getElementById('jdkPath').value;
 
-            // Priority 1: WebSocket if connected
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ type: 'run_interactive', files, mainClass, jdkPath }));
             } else {
-                // Priority 2: HTTP POST /api/run fallback if WebSocket blocked or disconnected
                 try {
                     if (term) term.write('\x1b[90m[Using HTTP API fallback]\x1b[0m\r\n');
                     const res = await fetch('/api/run', {
@@ -445,14 +614,18 @@ public class Main {
                     if (term) {
                         term.write(`\r\n${data.output.replace(/\n/g, '\r\n')}\r\n`);
                     }
+                    if (data.duration) {
+                        document.getElementById('statusExecTime').textContent = `${data.duration} ms`;
+                    }
                 } catch (err) {
-                    if (term) term.write(`\r\n\x1b[31mError sending run request: ${err.message}\x1b[0m\r\n`);
+                    if (term) term.write(`\r\n\x1b[31mError: ${err.message}\x1b[0m\r\n`);
                 }
             }
         }
 
         function startDebugger() {
             syncEditorContent();
+            switchBottomTab('terminal');
             if (term) {
                 term.clear();
                 term.write('\r\n\x1b[33mStarting Debugger...\x1b[0m\r\n');
@@ -464,7 +637,7 @@ public class Main {
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ type: 'debug_start', files, mainClass, breakpoints, jdkPath }));
             } else {
-                if (term) term.write('\r\n\x1b[31mVisual debugger requires WebSocket connection.\x1b[0m\r\n');
+                if (term) term.write('\r\n\x1b[31mDebugger requires WebSocket connection.\x1b[0m\r\n');
             }
         }
 
@@ -474,6 +647,194 @@ public class Main {
             }
         }
 
+        // Unit Test Runner Execution
+        async function runUnitTests() {
+            syncEditorContent();
+            switchBottomTab('test');
+            const summaryEl = document.getElementById('testSummary');
+            const detailsEl = document.getElementById('testDetails');
+            const durationEl = document.getElementById('testDuration');
+
+            summaryEl.innerHTML = '<span style="color:#f59e0b;">Running JUnit 5 Test Suite...</span>';
+            detailsEl.textContent = 'Scanning and compiling workspace test classes...\n';
+
+            try {
+                const jdkPath = document.getElementById('jdkPath').value;
+                const res = await fetch('/api/test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ files, jdkPath })
+                });
+                const data = await res.json();
+                
+                if (data.summary) {
+                    summaryEl.innerHTML = `
+                        <span class="badge-pass">✔ Passed: ${data.summary.passed}</span>
+                        <span class="badge-fail">✖ Failed: ${data.summary.failed}</span>
+                        <span style="color:#a1a1aa;">Total: ${data.summary.total}</span>
+                    `;
+                } else {
+                    summaryEl.textContent = data.success ? "All Tests Passed" : "Test Execution Failed";
+                }
+
+                if (data.duration) {
+                    durationEl.textContent = `Duration: ${data.duration} ms`;
+                    document.getElementById('statusExecTime').textContent = `${data.duration} ms`;
+                }
+
+                detailsEl.textContent = data.output;
+            } catch (err) {
+                summaryEl.innerHTML = `<span class="badge-fail">Error running tests: ${err.message}</span>`;
+            }
+        }
+
+        // AI Assistant Functions
+        async function openAIFixer() {
+            syncEditorContent();
+            switchBottomTab('ai');
+            const outputEl = document.getElementById('aiOutput');
+            outputEl.innerHTML = `<h5>AI AUTO-FIXER</h5>Analyzing syntax and compilation errors...`;
+
+            try {
+                const currentFile = files.find(f => f.id === activeFileId);
+                const res = await fetch('/api/ai/fix', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ error: lastErrorOutput || "Syntax error check", code: currentFile ? currentFile.content : "", filename: currentFile ? currentFile.name : "" })
+                });
+                const data = await res.json();
+                outputEl.innerHTML = `
+                    <h5>AI AUTO-FIX SUGGESTION</h5>
+                    <p style="color:#818cf8; margin:4px 0;"><strong>Analysis:</strong> ${data.explanation}</p>
+                    <button class="btn-run" style="margin-top:8px;" onclick="applyAIPatch(\`${data.patchedCode.replace(/`/g, '\\`').replace(/\\/g, '\\\\')}\`)">✔ Apply Fix to Editor</button>
+                `;
+            } catch (e) {
+                outputEl.innerHTML = `<p style="color:#ef4444;">AI Fixer Error: ${e.message}</p>`;
+            }
+        }
+
+        function applyAIPatch(newCode) {
+            const currentFile = files.find(f => f.id === activeFileId);
+            if (currentFile) {
+                currentFile.content = newCode;
+                if (editor) editor.setValue(newCode);
+                triggerLinter();
+                document.getElementById('aiOutput').innerHTML = `<h5>AI FIX APPLIED</h5>Successfully updated code in ${currentFile.name}.`;
+            }
+        }
+
+        async function aiGenerateTests() {
+            syncEditorContent();
+            switchBottomTab('ai');
+            const outputEl = document.getElementById('aiOutput');
+            const currentFile = files.find(f => f.id === activeFileId);
+            const className = currentFile ? currentFile.path.replace(/\.java$/, '') : 'Main';
+
+            outputEl.innerHTML = `<h5>AI TEST GENERATOR</h5>Generating JUnit 5 unit tests for ${className}...`;
+
+            try {
+                const res = await fetch('/api/ai/generate-tests', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ classCode: currentFile ? currentFile.content : "", className })
+                });
+                const data = await res.json();
+
+                const newTestFile = { id: Date.now().toString(), name: data.testFileName, path: data.testFileName, content: data.testCode };
+                files.push(newTestFile);
+                openTab(newTestFile.id);
+                renderSidebar();
+
+                outputEl.innerHTML = `
+                    <h5>AI TEST SUITE GENERATED</h5>
+                    <p>Created new test file: <strong style="color:#818cf8;">${data.testFileName}</strong></p>
+                    <button class="btn-test" onclick="runUnitTests()">🧪 Run Unit Tests Now</button>
+                `;
+            } catch (e) {
+                outputEl.innerHTML = `<p style="color:#ef4444;">AI Test Generation Error: ${e.message}</p>`;
+            }
+        }
+
+        async function aiExplainCode() {
+            syncEditorContent();
+            switchBottomTab('ai');
+            const outputEl = document.getElementById('aiOutput');
+            const currentFile = files.find(f => f.id === activeFileId);
+            outputEl.innerHTML = `<h5>AI CODE EXPLAINER</h5>Analyzing structure of ${currentFile ? currentFile.name : 'active file'}...`;
+
+            try {
+                const res = await fetch('/api/ai/explain', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code: currentFile ? currentFile.content : "" })
+                });
+                const data = await res.json();
+                outputEl.innerHTML = `
+                    <h5>CODE ANALYSIS: ${currentFile ? currentFile.name : ''}</h5>
+                    <div>${data.explanation.replace(/\n/g, '<br/>')}</div>
+                `;
+            } catch (e) {
+                outputEl.innerHTML = `<p style="color:#ef4444;">AI Explainer Error: ${e.message}</p>`;
+            }
+        }
+
+        // Dependency Manager Functions
+        async function loadDependencies() {
+            try {
+                const res = await fetch('/api/dependencies');
+                const data = await res.json();
+                const listEl = document.getElementById('depList');
+                if (!listEl) return;
+                listEl.innerHTML = '';
+                (data.dependencies || []).forEach(d => {
+                    const item = document.createElement('div');
+                    item.className = 'dep-item';
+                    item.innerHTML = `<span>📦 ${d.name}</span><span>${(d.size / 1024).toFixed(1)} KB</span>`;
+                    listEl.appendChild(item);
+                });
+            } catch (e) {}
+        }
+
+        async function addDependency() {
+            const urlInput = document.getElementById('depUrlInput');
+            const url = urlInput.value.trim();
+            if (!url) return alert("Please enter a JAR URL");
+
+            switchBottomTab('dep');
+            urlInput.value = '';
+            try {
+                const res = await fetch('/api/dependencies/add', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url })
+                });
+                const data = await res.json();
+                alert(data.message || data.error);
+                loadDependencies();
+            } catch (e) {
+                alert("Failed to add dependency: " + e.message);
+            }
+        }
+
+        // Export Project as ZIP
+        function exportProjectZip() {
+            syncEditorContent();
+            window.location.href = '/api/export';
+        }
+
+        // Bottom Panel Tab Switcher
+        function switchBottomTab(tabName) {
+            document.querySelectorAll('.panel-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.panel-body').forEach(b => b.classList.remove('active'));
+
+            const tabEl = Array.from(document.querySelectorAll('.panel-tab')).find(t => t.textContent.toLowerCase().includes(tabName));
+            if (tabEl) tabEl.classList.add('active');
+
+            const bodyEl = document.getElementById(`panel-${tabName}`);
+            if (bodyEl) bodyEl.classList.add('active');
+        }
+
+        // Sidebar & Tabs Renderers
         function renderSidebar() {
             const listEl = document.getElementById('fileList');
             const selectEl = document.getElementById('targetClassSelect');
@@ -484,15 +845,59 @@ public class Main {
             files.forEach(file => {
                 const item = document.createElement('div');
                 item.className = `file-item ${file.id === activeFileId ? 'active' : ''}`;
-                item.onclick = () => selectFile(file.id);
-                item.innerHTML = `<span>📄 ${file.path}</span>`;
+                item.onclick = () => openTab(file.id);
+                item.innerHTML = `
+                    <span>📄 ${file.path}</span>
+                    <span style="font-size:10px; color:#ef4444;" onclick="event.stopPropagation(); deleteFile('${file.id}')">✕</span>
+                `;
                 listEl.appendChild(item);
 
-                const className = file.path.replace(/\.java$/, '');
-                const option = document.createElement('option');
-                option.value = className; option.textContent = className;
-                selectEl.appendChild(option);
+                if (!file.name.endsWith('Test.java')) {
+                    const className = file.path.replace(/\.java$/, '');
+                    const option = document.createElement('option');
+                    option.value = className; option.textContent = className;
+                    selectEl.appendChild(option);
+                }
             });
+        }
+
+        function renderTabs() {
+            const tabsEl = document.getElementById('editorTabs');
+            if (!tabsEl) return;
+            tabsEl.innerHTML = '';
+
+            openTabIds.forEach(id => {
+                const file = files.find(f => f.id === id);
+                if (!file) return;
+                const tab = document.createElement('div');
+                tab.className = `tab-item ${file.id === activeFileId ? 'active' : ''}`;
+                tab.onclick = () => selectFile(file.id);
+                tab.innerHTML = `
+                    <span>📄 ${file.name}</span>
+                    <span class="tab-close" onclick="event.stopPropagation(); closeTab('${file.id}')">✕</span>
+                `;
+                tabsEl.appendChild(tab);
+            });
+        }
+
+        function openTab(id) {
+            if (!openTabIds.includes(id)) {
+                openTabIds.push(id);
+            }
+            selectFile(id);
+        }
+
+        function closeTab(id) {
+            openTabIds = openTabIds.filter(tId => tId !== id);
+            if (openTabIds.length > 0) {
+                if (activeFileId === id) {
+                    selectFile(openTabIds[openTabIds.length - 1]);
+                } else {
+                    renderTabs();
+                }
+            } else if (files.length > 0) {
+                openTab(files[0].id);
+            }
         }
 
         function selectFile(id) {
@@ -508,7 +913,9 @@ public class Main {
                 }
             }
             renderSidebar();
+            renderTabs();
             updateBreakpointDecorations();
+            triggerLinter();
         }
 
         function createNewFile() {
@@ -518,17 +925,42 @@ public class Main {
             const className = filePath.replace(/\.java$/, '');
             const newFile = { id: Date.now().toString(), name: filePath, path: filePath, content: `public class ${className} {\n\n}` };
             files.push(newFile);
-            selectFile(newFile.id);
+            openTab(newFile.id);
+        }
+
+        function createUnitTestFile() {
+            syncEditorContent();
+            const currentFile = files.find(f => f.id === activeFileId);
+            const targetClass = currentFile ? currentFile.path.replace(/\.java$/, '') : 'Main';
+            const testFileName = `${targetClass}Test.java`;
+            
+            const newFile = {
+                id: Date.now().toString(),
+                name: testFileName,
+                path: testFileName,
+                content: `import org.junit.jupiter.api.Test;\nimport static org.junit.jupiter.api.Assertions.*;\n\npublic class ${targetClass}Test {\n\n    @Test\n    void testSample() {\n        assertEquals(1, 1);\n    }\n}`
+            };
+            files.push(newFile);
+            openTab(newFile.id);
+        }
+
+        function deleteFile(id) {
+            if (files.length <= 1) return alert("Cannot delete the last remaining file.");
+            if (!confirm("Are you sure you want to delete this file?")) return;
+            files = files.filter(f => f.id !== id);
+            closeTab(id);
+            renderSidebar();
         }
 
         window.addEventListener('DOMContentLoaded', async () => {
             try {
                 const res = await fetch('/api/jdk-path');
                 const data = await res.json();
-                if (data.jdkPath) document.getElementById('jdkPath').value = data.jdkPath;
-            } catch (e) {
-                console.warn("Could not fetch default JDK path", e);
-            }
+                if (data.jdkPath) {
+                    document.getElementById('jdkPath').value = data.jdkPath;
+                    document.getElementById('statusJdk').textContent = data.jdkPath.split(/[\/\\]/).pop();
+                }
+            } catch (e) {}
         });
     </script>
 </body>
