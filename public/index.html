@@ -13,6 +13,20 @@
         #editor { height: 400px; border: 1px solid #444; }
         #output { height: 150px; background: #000; color: #0f0; padding: 10px; margin-top: 15px; font-family: monospace; overflow-y: auto; white-space: pre-wrap; }
     </style>
+    <script>
+        // Auto-fill input box with system JDK path on load
+window.addEventListener('DOMContentLoaded', async () => {
+    try {
+        const res = await fetch('/api/jdk-path');
+        const data = await res.json();
+        if (data.jdkPath) {
+            document.getElementById('jdkPath').value = data.jdkPath;
+        }
+    } catch (e) {
+        console.warn("Could not fetch default JDK path", e);
+    }
+});
+    </script>
 </head>
 <body>
 
