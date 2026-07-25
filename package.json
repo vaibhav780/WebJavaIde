@@ -21,6 +21,7 @@
   "homepage": "https://github.com/vaibhav780/WebJavaIde#readme",
   "dependencies": {
     "express": "^5.2.1",
+    "ws": "^8.21.1",
     "xml2js": "^0.6.2"
   }
 }

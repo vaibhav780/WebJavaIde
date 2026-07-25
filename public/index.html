@@ -2,170 +2,311 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Java Web IDE - Multi-file Workspace</title>
+    <title>Java Web IDE - Terminal & Visual Debugger</title>
+    <!-- Monaco Editor CSS -->
     <link rel="stylesheet" data-name="vs/editor" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.38.0/min/vs/editor/editor.main.min.css">
+    <!-- xterm.js Terminal CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/xterm/5.3.0/xterm.min.css" />
+    
     <style>
         * { box-sizing: border-box; }
-        body { font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; padding: 15px; background: #1e1e1e; color: #fff; height: 100vh; display: flex; flex-direction: column; }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; padding: 12px; background: #1e1e1e; color: #fff; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
         
-        .top-bar { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; }
-        input, select { padding: 8px 12px; background: #2d2d2d; border: 1px solid #454545; color: #fff; border-radius: 4px; }
-        button { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; color: white; }
+        .top-bar { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; height: 40px; }
+        input, select { padding: 6px 10px; background: #2d2d2d; border: 1px solid #454545; color: #fff; border-radius: 4px; }
+        button { padding: 6px 14px; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; color: white; }
         .btn-run { background: #0e639c; }
-        .btn-run:hover { background: #1177bb; }
-        .btn-test { background: #28a745; }
-        .btn-test:hover { background: #218838; }
-
-        .workspace-container { display: flex; flex: 1; gap: 12px; min-height: 0; }
-
-        /* Sidebar File Tree */
-        .sidebar { width: 260px; background: #252526; border: 1px solid #3c3c3c; border-radius: 4px; display: flex; flex-direction: column; }
-        .sidebar-header { padding: 10px; font-weight: bold; background: #2d2d2d; border-bottom: 1px solid #3c3c3c; display: flex; justify-content: space-between; align-items: center; }
-        .file-list { flex: 1; overflow-y: auto; padding: 5px 0; }
-        .file-item { padding: 6px 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
-        .file-item:hover { background: #2a2d2e; }
-        .file-item.active { background: #37373d; font-weight: bold; color: #4ec9b0; }
-        .delete-btn { color: #888; cursor: pointer; font-size: 11px; }
-        .delete-btn:hover { color: #f48771; }
-
-        /* Main Workspace & Output */
-        .main-pane { flex: 1; display: flex; flex-direction: column; gap: 10px; }
-        #editor { flex: 2; border: 1px solid #3c3c3c; border-radius: 4px; min-height: 300px; }
+        .btn-debug { background: #ce7011; }
         
-        .output-pane { flex: 1; background: #1e1e1e; border: 1px solid #3c3c3c; border-radius: 4px; display: flex; flex-direction: column; }
-        .output-header { background: #2d2d2d; padding: 6px 12px; font-weight: bold; font-size: 12px; border-bottom: 1px solid #3c3c3c; }
-        #console-output { flex: 1; background: #000; color: #00ff66; padding: 10px; font-family: 'Courier New', monospace; overflow-y: auto; white-space: pre-wrap; margin: 0; }
+        /* Debugger Controls Bar */
+        .debug-bar { display: none; gap: 8px; background: #333; padding: 4px 10px; border-radius: 4px; align-items: center; }
+        .debug-bar button { padding: 4px 8px; font-size: 12px; background: #444; }
 
-        /* Dashboard Styling */
-        .stats-bar { display: flex; gap: 15px; padding: 8px 10px; font-weight: bold; border-bottom: 1px solid #333; font-size: 13px; }
-        .test-card { background: #252526; border-left: 4px solid #454545; padding: 8px; margin: 6px; border-radius: 2px; }
-        .test-card.passed { border-left-color: #28a745; }
-        .test-card.failed { border-left-color: #dc3545; }
-        .test-error { color: #f48771; font-family: monospace; font-size: 11px; margin-top: 5px; white-space: pre-wrap; background: #2d1616; padding: 6px; }
+        .workspace-container { display: flex; flex: 1; gap: 10px; height: calc(100vh - 70px); }
+
+        /* Sidebar Tree View */
+        .sidebar { width: 220px; background: #252526; border: 1px solid #3c3c3c; border-radius: 4px; display: flex; flex-direction: column; }
+        .sidebar-header { padding: 8px; font-weight: bold; background: #2d2d2d; border-bottom: 1px solid #3c3c3c; display: flex; justify-content: space-between; font-size: 12px; }
+        .file-item { padding: 6px 10px; cursor: pointer; font-size: 13px; display: flex; justify-content: space-between; }
+        .file-item.active { background: #37373d; font-weight: bold; color: #4ec9b0; }
+
+        /* Main Workspace Layout */
+        .main-pane { flex: 1; display: flex; flex-direction: column; gap: 10px; height: 100%; }
+        .editor-row { display: flex; flex: 3; gap: 10px; min-height: 300px; }
+        
+        /* Force explicit container bounds so Monaco doesn't render 0px height */
+        #editor-container { flex: 3; border: 1px solid #3c3c3c; border-radius: 4px; position: relative; height: 100%; min-height: 300px; background: #1e1e1e; }
+        #editor { width: 100%; height: 100%; position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
+        
+        /* Breakpoint Margin Glyph */
+        .breakpoint-glyph { background: #e51400; width: 10px !important; height: 10px !important; border-radius: 50%; margin-left: 5px; margin-top: 5px; }
+
+        /* Variables & Debug Side Panel */
+        .debug-panel { flex: 1; background: #252526; border: 1px solid #3c3c3c; border-radius: 4px; padding: 8px; font-family: monospace; font-size: 12px; overflow-y: auto; }
+        .debug-panel h4 { margin: 0 0 8px 0; color: #ce7011; border-bottom: 1px solid #444; padding-bottom: 4px; }
+
+        /* Bottom Terminal Container */
+        .terminal-pane { flex: 2; background: #000; border: 1px solid #3c3c3c; border-radius: 4px; padding: 4px; display: flex; flex-direction: column; min-height: 180px; }
+        #terminal { flex: 1; width: 100%; height: 100%; }
     </style>
 </head>
 <body>
 
     <div class="top-bar">
-        <input type="text" id="jdkPath" placeholder="JDK Path (auto-detected if blank)" style="width: 280px;" />
-        
-        <label style="font-size: 13px;">Target Class:</label>
+        <input type="text" id="jdkPath" placeholder="JDK Path (auto-detected if blank)" style="width: 260px;" />
+        <label style="font-size: 12px;">Class:</label>
         <select id="targetClassSelect"></select>
 
-        <button class="btn-run" onclick="runCoreJava()">▶ Run Core Java</button>
-        <button class="btn-test" onclick="runJUnitTest()">🧪 Run JUnit Test</button>
+        <button class="btn-run" onclick="runInteractive()">▶ Run (Interactive Terminal)</button>
+        <button class="btn-debug" onclick="startDebugger()">🐞 Debug Program</button>
+
+        <!-- Debug Toolbar -->
+        <div id="debugBar" class="debug-bar">
+            <span style="color:#ce7011; font-weight:bold; font-size:12px;">DEBUGGING:</span>
+            <button onclick="sendDebugCommand('cont')">▶ Continue (F5)</button>
+            <button onclick="sendDebugCommand('step')">⤵ Step Into (F11)</button>
+            <button onclick="sendDebugCommand('next')">↷ Step Over (F10)</button>
+        </div>
     </div>
 
     <div class="workspace-container">
-        <!-- Sidebar Tree View -->
+        <!-- Sidebar File Tree -->
         <div class="sidebar">
             <div class="sidebar-header">
-                <span>PROJECT FILES</span>
-                <button style="padding: 2px 8px; font-size: 11px; background: #0e639c;" onclick="createNewFile()">+ New File</button>
+                <span>FILES</span>
+                <button style="padding:2px 6px; font-size:10px; background:#0e639c;" onclick="createNewFile()">+ File</button>
             </div>
-            <div id="fileList" class="file-list"></div>
+            <div id="fileList"></div>
         </div>
 
-        <!-- Editor & Output -->
         <div class="main-pane">
-            <div id="editor"></div>
+            <div class="editor-row">
+                <div id="editor-container">
+                    <div id="editor"></div>
+                </div>
+                <!-- Debug Variables Panel -->
+                <div class="debug-panel">
+                    <h4>VARIABLES & STACK</h4>
+                    <div id="variablesView">Start debugging or hit a breakpoint to inspect memory...</div>
+                </div>
+            </div>
             
-            <div class="output-pane">
-                <div class="output-header">Execution & Test Console</div>
-                <div id="console-output">Output will appear here...</div>
+            <!-- xterm.js Terminal -->
+            <div class="terminal-pane">
+                <div id="terminal"></div>
             </div>
         </div>
     </div>
 
+    <!-- Scripts -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.38.0/min/vs/loader.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/5.3.0/xterm.min.js"></script>
+    
     <script>
-        let editor;
-        let activeFileId = null;
+        let editor, term, ws;
+        let activeFileId = '1';
+        let breakpoints = [];
+        let debugDecorations = [];
 
-        // In-memory project files representation
+        // Sample Program Source Code
+        const SAMPLE_JAVA_CODE = `import java.util.Scanner;
+
+public class Main {
+    public static void main(String[] args) {
+        Scanner scanner = new Scanner(System.in);
+        System.out.print("Enter your name: ");
+        String name = scanner.nextLine();
+        
+        int a = 10;
+        int b = 20;
+        int sum = calculateSum(a, b);
+        
+        System.out.println("Hello " + name + ", sum is: " + sum);
+    }
+
+    public static int calculateSum(int x, int y) {
+        return x + y;
+    }
+}`;
+
         let files = [
             {
                 id: '1',
                 name: 'Main.java',
                 path: 'Main.java',
-                content: `public class Main {\n    public static void main(String[] args) {\n        Calculator calc = new Calculator();\n        System.out.println("2 + 3 = " + calc.add(2, 3));\n    }\n}`
-            },
-            {
-                id: '2',
-                name: 'Calculator.java',
-                path: 'Calculator.java',
-                content: `public class Calculator {\n    public int add(int a, int b) {\n        return a + b;\n    }\n    public int multiply(int a, int b) {\n        return a * b;\n    }\n}`
-            },
-            {
-                id: '3',
-                name: 'CalculatorTest.java',
-                path: 'CalculatorTest.java',
-                content: `import org.junit.jupiter.api.Test;\nimport static org.junit.jupiter.api.Assertions.*;\n\npublic class CalculatorTest {\n    @Test\n    void testAdd() {\n        Calculator calc = new Calculator();\n        assertEquals(5, calc.add(2, 3));\n    }\n\n    @Test\n    void testMultiply() {\n        Calculator calc = new Calculator();\n        assertEquals(6, calc.multiply(2, 3));\n    }\n}`
+                content: SAMPLE_JAVA_CODE
             }
         ];
 
-        require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.38.0/min/vs' }});
-        require(['vs/editor/editor.main'], function() {
-            // Register Basic Autocomplete
-            monaco.languages.registerCompletionItemProvider('java', {
-                provideCompletionItems: function(model, position) {
-                    return {
-                        suggestions: [
-                            { label: 'sout', kind: monaco.languages.CompletionItemKind.Snippet, insertText: 'System.out.println("${1}");', insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet },
-                            { label: 'main', kind: monaco.languages.CompletionItemKind.Snippet, insertText: 'public static void main(String[] args) {\n\t${1}\n}', insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet }
-                        ]
-                    };
+        // 1. Initialize xterm.js Terminal
+        try {
+            term = new Terminal({ theme: { background: '#000000' }, cursorBlink: true, fontSize: 13 });
+            term.open(document.getElementById('terminal'));
+        } catch (e) {
+            console.error("Failed to initialize xterm terminal:", e);
+        }
+
+        // 2. Initialize WebSocket Connection
+        ws = new WebSocket(`ws://${location.host}`);
+        ws.onmessage = (event) => {
+            const msg = JSON.parse(event.data);
+            if (msg.type === 'output' && term) term.write(msg.data);
+            
+            if (msg.type === 'debug_event' && msg.event === 'stopped') {
+                highlightDebugLine(msg.line);
+            }
+
+            if (msg.type === 'debug_vars') {
+                document.getElementById('variablesView').textContent = msg.data;
+            }
+        };
+
+        if (term) {
+            term.onData(data => {
+                ws.send(JSON.stringify({ type: 'terminal_input', input: data }));
+            });
+        }
+
+        // 3. Render Sidebar First So Dropdowns and UI Populate Immediately
+        renderSidebar();
+
+        // 4. Initialize Monaco Editor Safely
+        function initMonaco() {
+            if (typeof require === 'undefined') {
+                console.error("Monaco loader.min.js failed to load from CDN. Check internet connection.");
+                showFallbackTextarea();
+                return;
+            }
+
+            require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.38.0/min/vs' }});
+            require(['vs/editor/editor.main'], function() {
+                try {
+                    editor = monaco.editor.create(document.getElementById('editor'), {
+                        value: files[0].content,
+                        language: 'java',
+                        theme: 'vs-dark',
+                        automaticLayout: true,
+                        glyphMargin: true
+                    });
+
+                    // Margin breakpoint toggles
+                    editor.onMouseDown(e => {
+                        if (e.target.type === monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) {
+                            const lineNumber = e.target.position.lineNumber;
+                            toggleBreakpoint(lineNumber);
+                        }
+                    });
+
+                    // Sync content on type
+                    editor.onDidChangeModelContent(() => {
+                        if (activeFileId) {
+                            const file = files.find(f => f.id === activeFileId);
+                            if (file) file.content = editor.getValue();
+                        }
+                    });
+
+                } catch (err) {
+                    console.error("Monaco Editor Initialization Error:", err);
+                    showFallbackTextarea();
                 }
+            }, function(err) {
+                console.error("Failed to load Monaco vs/editor:", err);
+                showFallbackTextarea();
             });
+        }
 
-            editor = monaco.editor.create(document.getElementById('editor'), {
-                language: 'java',
-                theme: 'vs-dark',
-                automaticLayout: true
+        // Fallback in case CDN is blocked or fails
+        function showFallbackTextarea() {
+            const container = document.getElementById('editor-container');
+            container.innerHTML = `<textarea id="fallback-editor" style="width:100%; height:100%; background:#1e1e1e; color:#00ff66; font-family:monospace; padding:10px; border:none;">${files[0].content}</textarea>`;
+            const textarea = document.getElementById('fallback-editor');
+            textarea.addEventListener('input', () => {
+                const file = files.find(f => f.id === activeFileId);
+                if (file) file.content = textarea.value;
             });
+        }
 
-            // Save active editor content back to file array on change
-            editor.onDidChangeModelContent(() => {
-                if (activeFileId) {
-                    const currentFile = files.find(f => f.id === activeFileId);
-                    if (currentFile) currentFile.content = editor.getValue();
+        // Run Monaco Loader
+        window.addEventListener('load', initMonaco);
+
+        function toggleBreakpoint(lineNumber) {
+            const currentFile = files.find(f => f.id === activeFileId);
+            const className = currentFile.path.replace(/\.java$/, '');
+            
+            const existingIdx = breakpoints.findIndex(bp => bp.className === className && bp.lineNumber === lineNumber);
+            if (existingIdx >= 0) {
+                breakpoints.splice(existingIdx, 1);
+            } else {
+                breakpoints.push({ className, lineNumber });
+            }
+
+            updateBreakpointDecorations();
+        }
+
+        function updateBreakpointDecorations() {
+            if (!editor) return;
+            const currentFile = files.find(f => f.id === activeFileId);
+            const className = currentFile.path.replace(/\.java$/, '');
+            const currentBps = breakpoints.filter(bp => bp.className === className);
+
+            const decorations = currentBps.map(bp => ({
+                range: new monaco.Range(bp.lineNumber, 1, bp.lineNumber, 1),
+                options: { isWholeLine: false, glyphMarginClassName: 'breakpoint-glyph' }
+            }));
+
+            editor.deltaDecorations([], decorations);
+        }
+
+        function highlightDebugLine(lineNumber) {
+            if (!lineNumber || !editor) return;
+            debugDecorations = editor.deltaDecorations(debugDecorations, [
+                {
+                    range: new monaco.Range(lineNumber, 1, lineNumber, 1),
+                    options: { isWholeLine: true, className: 'monaco-breakpoint-hit-line', linesDecorationsClassName: 'active-debug-line' }
                 }
-            });
+            ]);
+            editor.revealLine(lineNumber);
+        }
 
-            renderSidebar();
-            selectFile('1');
-        });
+        function runInteractive() {
+            if (term) term.clear();
+            document.getElementById('debugBar').style.display = 'none';
+            const mainClass = document.getElementById('targetClassSelect').value;
+            const jdkPath = document.getElementById('jdkPath').value;
 
-        // Auto-fetch JDK path on load
-        window.addEventListener('DOMContentLoaded', async () => {
-            const res = await fetch('/api/jdk-path');
-            const data = await res.json();
-            if (data.jdkPath) document.getElementById('jdkPath').value = data.jdkPath;
-        });
+            ws.send(JSON.stringify({ type: 'run_interactive', files, mainClass, jdkPath }));
+        }
+
+        function startDebugger() {
+            if (term) term.clear();
+            document.getElementById('debugBar').style.display = 'flex';
+            const mainClass = document.getElementById('targetClassSelect').value;
+            const jdkPath = document.getElementById('jdkPath').value;
+
+            ws.send(JSON.stringify({ type: 'debug_start', files, mainClass, breakpoints, jdkPath }));
+        }
+
+        function sendDebugCommand(cmd) {
+            ws.send(JSON.stringify({ type: 'debug_command', command: cmd }));
+        }
 
         function renderSidebar() {
             const listEl = document.getElementById('fileList');
             const selectEl = document.getElementById('targetClassSelect');
+            if (!listEl || !selectEl) return;
             
-            listEl.innerHTML = '';
-            selectEl.innerHTML = '';
+            listEl.innerHTML = ''; selectEl.innerHTML = '';
 
             files.forEach(file => {
-                // Render tree list
                 const item = document.createElement('div');
                 item.className = `file-item ${file.id === activeFileId ? 'active' : ''}`;
                 item.onclick = () => selectFile(file.id);
-                item.innerHTML = `
-                    <span>📄 ${file.path}</span>
-                    ${files.length > 1 ? `<span class="delete-btn" onclick="deleteFile(event, '${file.id}')">✕</span>` : ''}
-                `;
+                item.innerHTML = `<span>📄 ${file.path}</span>`;
                 listEl.appendChild(item);
 
-                // Populate Class dropdown options
-                const className = file.path.replace(/\//g, '.').replace(/\.java$/, '');
+                const className = file.path.replace(/\.java$/, '');
                 const option = document.createElement('option');
-                option.value = className;
-                option.textContent = className;
+                option.value = className; option.textContent = className;
                 selectEl.appendChild(option);
             });
         }
@@ -173,102 +314,36 @@
         function selectFile(id) {
             activeFileId = id;
             const file = files.find(f => f.id === id);
-            if (file && editor) {
-                editor.setValue(file.content);
+            if (file) {
+                if (editor) {
+                    editor.setValue(file.content);
+                } else {
+                    const fallback = document.getElementById('fallback-editor');
+                    if (fallback) fallback.value = file.content;
+                }
             }
             renderSidebar();
+            updateBreakpointDecorations();
         }
 
         function createNewFile() {
-            const filePath = prompt("Enter file path (e.g., com/example/Service.java or Helper.java):");
-            if (!filePath || !filePath.endsWith('.java')) {
-                alert("Please enter a valid .java file name.");
-                return;
-            }
-
-            const fileName = filePath.split('/').pop();
-            const className = fileName.replace('.java', '');
-            
-            const newFile = {
-                id: Date.now().toString(),
-                name: fileName,
-                path: filePath,
-                content: `public class ${className} {\n\n}`
-            };
-
+            const filePath = prompt("Enter file path (e.g. Service.java):");
+            if (!filePath) return;
+            const className = filePath.replace('.java', '');
+            const newFile = { id: Date.now().toString(), name: filePath, path: filePath, content: `public class ${className} {\n\n}` };
             files.push(newFile);
             selectFile(newFile.id);
         }
 
-        function deleteFile(event, id) {
-            event.stopPropagation();
-            files = files.filter(f => f.id !== id);
-            if (activeFileId === id) {
-                selectFile(files[0].id);
-            } else {
-                renderSidebar();
-            }
-        }
-
-        // --- RUN CORE JAVA PROGRAM ---
-        async function runCoreJava() {
-            const jdkPath = document.getElementById('jdkPath').value;
-            const mainClass = document.getElementById('targetClassSelect').value;
-            const consoleDiv = document.getElementById('console-output');
-
-            consoleDiv.textContent = "Compiling project and running " + mainClass + "...";
-
+        window.addEventListener('DOMContentLoaded', async () => {
             try {
-                const response = await fetch('/api/run', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ jdkPath, files, mainClass })
-                });
-
-                const data = await response.json();
-                consoleDiv.textContent = data.output;
-            } catch (err) {
-                consoleDiv.textContent = "Error executing request: " + err.message;
+                const res = await fetch('/api/jdk-path');
+                const data = await res.json();
+                if (data.jdkPath) document.getElementById('jdkPath').value = data.jdkPath;
+            } catch (e) {
+                console.warn("Could not fetch default JDK path", e);
             }
-        }
-
-        // --- RUN JUNIT TEST ---
-        async function runJUnitTest() {
-            const jdkPath = document.getElementById('jdkPath').value;
-            const testClass = document.getElementById('targetClassSelect').value;
-            const consoleDiv = document.getElementById('console-output');
-
-            consoleDiv.textContent = "Compiling project and running JUnit test suite: " + testClass + "...";
-
-            try {
-                const response = await fetch('/api/test', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ jdkPath, files, testClass })
-                });
-
-                const data = await response.json();
-
-                if (!data.success) {
-                    consoleDiv.textContent = "Compilation/Execution Error:\n" + data.output;
-                    return;
-                }
-
-                const r = data.results;
-                const passedCount = r.total - r.failures - r.errors - r.skipped;
-
-                let outputHtml = `JUnit Execution Summary:\nPassed: ${passedCount}/${r.total} | Failed: ${r.failures} | Time: ${r.time}s\n\n`;
-                
-                r.tests.forEach(t => {
-                    outputHtml += `[${t.passed ? 'PASSED' : 'FAILED'}] ${t.name} (${t.time}s)\n`;
-                    if (t.message) outputHtml += `   └── Error: ${t.message}\n`;
-                });
-
-                consoleDiv.textContent = outputHtml;
-            } catch (err) {
-                consoleDiv.textContent = "Error executing test request: " + err.message;
-            }
-        }
+        });
     </script>
 </body>
 </html>

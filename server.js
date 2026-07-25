@@ -1,5 +1,7 @@
 const express = require('express');
-const { exec } = require('child_process');
+const http = require('http');
+const WebSocket = require('ws');
+const { spawn, exec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { parseStringPromise } = require('xml2js');
@@ -7,6 +9,9 @@ const { parseStringPromise } = require('xml2js');
 const app = express();
 app.use(express.json());
 app.use(express.static('public'));
+
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
 
 const JUNIT_JAR = path.join(__dirname, 'lib', 'junit-platform-console-standalone-1.10.2.jar');
 
@@ -28,143 +33,147 @@ app.get('/api/jdk-path', (req, res) => {
     res.json({ jdkPath: getSystemJdkPath() || '' });
 });
 
-/**
- * Helper to write a list of files into a workspace directory.
- * files format: [{ name: "Calculator.java", path: "com/example/Calculator.java", content: "..." }]
- */
 function setupWorkspace(files, workspaceDir) {
-    if (fs.existsSync(workspaceDir)) {
-        fs.rmSync(workspaceDir, { recursive: true, force: true });
-    }
+    if (fs.existsSync(workspaceDir)) fs.rmSync(workspaceDir, { recursive: true, force: true });
     fs.mkdirSync(workspaceDir, { recursive: true });
 
-    const writtenFiles = [];
+    const javaFiles = [];
     for (const file of files) {
         const fullPath = path.join(workspaceDir, file.path);
         const dirName = path.dirname(fullPath);
-        if (!fs.existsSync(dirName)) {
-            fs.mkdirSync(dirName, { recursive: true });
-        }
+        if (!fs.existsSync(dirName)) fs.mkdirSync(dirName, { recursive: true });
         fs.writeFileSync(fullPath, file.content);
-        if (file.name.endsWith('.java')) {
-            writtenFiles.push(fullPath);
-        }
+        if (file.name.endsWith('.java')) javaFiles.push(fullPath);
     }
-    return writtenFiles;
+    return javaFiles;
 }
 
-// --- RUN CORE JAVA PROGRAM ENDPOINT ---
-app.post('/api/run', (req, res) => {
-    let { jdkPath, files, mainClass } = req.body;
+// Global process references for WebSocket sessions
+let runningAppProcess = null;
+let runningJdbProcess = null;
 
-    if (!jdkPath || jdkPath.trim() === '') jdkPath = getSystemJdkPath();
-    if (!jdkPath) return res.status(400).json({ error: "JDK path not found." });
-    if (!files || files.length === 0) return res.status(400).json({ error: "No files provided." });
+// WebSocket Router
+wss.on('connection', (ws) => {
+    ws.on('message', async (message) => {
+        try {
+            const data = JSON.parse(message);
 
-    const isWin = process.platform === 'win32';
-    const javacBin = path.join(jdkPath, 'bin', isWin ? 'javac.exe' : 'javac');
-    const javaBin = path.join(jdkPath, 'bin', isWin ? 'java.exe' : 'java');
+            // --- 1. RUN INTERACTIVE PROGRAM VIA XTERM.JS ---
+            if (data.type === 'run_interactive') {
+                const { files, mainClass, jdkPath: userJdk } = data;
+                const jdkPath = userJdk || getSystemJdkPath();
+                const tempDir = path.join(__dirname, 'temp_workspace');
+                const javaFiles = setupWorkspace(files, tempDir);
 
-    const tempDir = path.join(__dirname, 'temp_workspace');
-    const javaFiles = setupWorkspace(files, tempDir);
+                const isWin = process.platform === 'win32';
+                const javacBin = path.join(jdkPath, 'bin', isWin ? 'javac.exe' : 'javac');
+                const javaBin = path.join(jdkPath, 'bin', isWin ? 'java.exe' : 'java');
 
-    if (javaFiles.length === 0) {
-        return res.status(400).json({ error: "No .java files found to compile." });
-    }
+                ws.send(JSON.stringify({ type: 'output', data: '\r\n\x1b[33mCompiling project...\x1b[0m\r\n' }));
 
-    // Compile all Java files together
-    const javaFilesArg = javaFiles.map(f => `"${f}"`).join(' ');
-    const compileCmd = `"${javacBin}" -d "${tempDir}" ${javaFilesArg}`;
+                const javaFilesArg = javaFiles.map(f => `"${f}"`).join(' ');
+                exec(`"${javacBin}" -d "${tempDir}" ${javaFilesArg}`, (err, stdout, stderr) => {
+                    if (err || stderr) {
+                        ws.send(JSON.stringify({ type: 'output', data: `\r\n\x1b[31mCompilation Error:\r\n${stderr || err.message}\x1b[0m\r\n` }));
+                        return;
+                    }
 
-    exec(compileCmd, (compileErr, stdout, stderr) => {
-        if (compileErr || stderr) {
-            return res.json({ success: false, isCompileError: true, output: stderr || compileErr.message });
-        }
+                    ws.send(JSON.stringify({ type: 'output', data: `\x1b[32mCompilation successful. Launching ${mainClass}...\x1b[0m\r\n\r\n` }));
 
-        // Run the target main class
-        const runCmd = `"${javaBin}" -cp "${tempDir}" ${mainClass}`;
-        exec(runCmd, (runErr, runStdout, runStderr) => {
-            if (runErr || runStderr) {
-                return res.json({ success: false, output: runStderr || runErr.message });
+                    if (runningAppProcess) runningAppProcess.kill();
+                    runningAppProcess = spawn(javaBin, ['-cp', tempDir, mainClass]);
+
+                    runningAppProcess.stdout.on('data', (d) => ws.send(JSON.stringify({ type: 'output', data: d.toString().replace(/\n/g, '\r\n') })));
+                    runningAppProcess.stderr.on('data', (d) => ws.send(JSON.stringify({ type: 'output', data: d.toString().replace(/\n/g, '\r\n') })));
+
+                    runningAppProcess.on('exit', (code) => {
+                        ws.send(JSON.stringify({ type: 'output', data: `\r\n\x1b[90m[Process exited with code ${code}]\x1b[0m\r\n` }));
+                        runningAppProcess = null;
+                    });
+                });
             }
-            res.json({ success: true, output: runStdout });
-        });
-    });
-});
 
-// --- RUN JUNIT 5 TESTS ENDPOINT ---
-app.post('/api/test', async (req, res) => {
-    let { jdkPath, files, testClass } = req.body;
-
-    if (!jdkPath || jdkPath.trim() === '') jdkPath = getSystemJdkPath();
-    if (!jdkPath) return res.status(400).json({ error: "JDK path not found." });
-    if (!fs.existsSync(JUNIT_JAR)) {
-        return res.status(500).json({ error: `JUnit Standalone JAR missing at ${JUNIT_JAR}` });
-    }
-
-    const isWin = process.platform === 'win32';
-    const javacBin = path.join(jdkPath, 'bin', isWin ? 'javac.exe' : 'javac');
-    const javaBin = path.join(jdkPath, 'bin', isWin ? 'java.exe' : 'java');
-
-    const tempDir = path.join(__dirname, 'temp_workspace');
-    const reportsDir = path.join(__dirname, 'temp_reports');
-
-    if (!fs.existsSync(reportsDir)) fs.mkdirSync(reportsDir, { recursive: true });
-
-    const javaFiles = setupWorkspace(files, tempDir);
-
-    const cpDelimiter = isWin ? ';' : ':';
-    const classpath = `"${tempDir}${cpDelimiter}${JUNIT_JAR}"`;
-    const javaFilesArg = javaFiles.map(f => `"${f}"`).join(' ');
-
-    // Compile all files with JUnit JAR on classpath
-    const compileCmd = `"${javacBin}" -cp ${classpath} -d "${tempDir}" ${javaFilesArg}`;
-
-    exec(compileCmd, async (compileErr, stdout, stderr) => {
-        if (compileErr || stderr) {
-            return res.json({ success: false, isCompileError: true, output: stderr || compileErr.message });
-        }
-
-        // Execute JUnit 5 Console Launcher
-        const runTestCmd = `"${javaBin}" -jar "${JUNIT_JAR}" execute --class-path "${tempDir}" --select-class ${testClass} --reports-dir "${reportsDir}"`;
-
-        exec(runTestCmd, async (runErr, runStdout, runStderr) => {
-            try {
-                const xmlFiles = fs.readdirSync(reportsDir).filter(f => f.endsWith('.xml'));
-                if (xmlFiles.length === 0) {
-                    return res.json({ success: false, output: runStderr || "No test reports generated." });
+            // Forward user inputs from xterm.js to process Stdin
+            if (data.type === 'terminal_input') {
+                if (runningAppProcess && runningAppProcess.stdin) {
+                    runningAppProcess.stdin.write(data.input);
                 }
-
-                const xmlData = fs.readFileSync(path.join(reportsDir, xmlFiles[0]), 'utf-8');
-                const parsedXml = await parseStringPromise(xmlData);
-                const testsuite = parsedXml.testsuite.$;
-                const testcases = parsedXml.testsuite.testcase || [];
-
-                const results = {
-                    total: parseInt(testsuite.tests || 0),
-                    failures: parseInt(testsuite.failures || 0),
-                    errors: parseInt(testsuite.errors || 0),
-                    skipped: parseInt(testsuite.skipped || 0),
-                    time: parseFloat(testsuite.time || 0).toFixed(3),
-                    tests: testcases.map(tc => {
-                        const hasFailure = tc.failure || tc.error;
-                        return {
-                            name: tc.$.name,
-                            className: tc.$.classname,
-                            time: tc.$.time,
-                            passed: !hasFailure,
-                            message: hasFailure ? (hasFailure[0].$.message || hasFailure[0]._) : null
-                        };
-                    })
-                };
-
-                fs.rmSync(reportsDir, { recursive: true, force: true });
-                res.json({ success: true, results });
-            } catch (err) {
-                res.json({ success: false, output: "Failed to parse test results: " + err.message });
             }
-        });
+
+            // --- 2. VISUAL DEBUGGER VIA JDB ---
+            if (data.type === 'debug_start') {
+                const { files, mainClass, breakpoints, jdkPath: userJdk } = data;
+                const jdkPath = userJdk || getSystemJdkPath();
+                const tempDir = path.join(__dirname, 'temp_workspace');
+                const javaFiles = setupWorkspace(files, tempDir);
+
+                const isWin = process.platform === 'win32';
+                const javacBin = path.join(jdkPath, 'bin', isWin ? 'javac.exe' : 'javac');
+                const jdbBin = path.join(jdkPath, 'bin', isWin ? 'jdb.exe' : 'jdb');
+
+                ws.send(JSON.stringify({ type: 'output', data: '\r\n\x1b[33mCompiling with debug symbols (-g)...\x1b[0m\r\n' }));
+
+                const javaFilesArg = javaFiles.map(f => `"${f}"`).join(' ');
+                // Compile with -g flag for debug symbols
+                exec(`"${javacBin}" -g -d "${tempDir}" ${javaFilesArg}`, (err, stdout, stderr) => {
+                    if (err || stderr) {
+                        ws.send(JSON.stringify({ type: 'output', data: `\r\n\x1b[31mCompile Error:\r\n${stderr}\x1b[0m\r\n` }));
+                        return;
+                    }
+
+                    if (runningJdbProcess) runningJdbProcess.kill();
+                    runningJdbProcess = spawn(jdbBin, ['-classpath', tempDir, mainClass]);
+
+                    runningJdbProcess.stdout.on('data', (d) => {
+                        const str = d.toString();
+                        ws.send(JSON.stringify({ type: 'output', data: str.replace(/\n/g, '\r\n') }));
+
+                        // Detect breakpoint hit or step event
+                        if (str.includes('Breakpoint hit:') || str.includes('Step completed:')) {
+                            const lineMatch = str.match(/line=(\d+)/);
+                            const classMatch = str.match(/thread=.*?, ([\w\.]+)\./);
+                            
+                            // Query debugger for variables and stack frames
+                            runningJdbProcess.stdin.write('locals\n');
+                            runningJdbProcess.stdin.write('where\n');
+
+                            ws.send(JSON.stringify({
+                                type: 'debug_event',
+                                event: 'stopped',
+                                line: lineMatch ? parseInt(lineMatch[1]) : null,
+                                className: classMatch ? classMatch[1] : mainClass,
+                                raw: str
+                            }));
+                        }
+
+                        // Parse locals output
+                        if (str.includes('Local variables:')) {
+                            ws.send(JSON.stringify({ type: 'debug_vars', data: str }));
+                        }
+                    });
+
+                    // Set requested breakpoints immediately upon launching JDB
+                    setTimeout(() => {
+                        breakpoints.forEach(bp => {
+                            runningJdbProcess.stdin.write(`stop at ${bp.className}:${bp.lineNumber}\n`);
+                        });
+                        runningJdbProcess.stdin.write('run\n');
+                    }, 1000);
+                });
+            }
+
+            // Debugger Command Execution
+            if (data.type === 'debug_command') {
+                if (runningJdbProcess && runningJdbProcess.stdin) {
+                    // Send JDB commands: 'cont', 'step', 'next'
+                    runningJdbProcess.stdin.write(`${data.command}\n`);
+                }
+            }
+
+        } catch (e) {
+            console.error("WebSocket Message Error:", e);
+        }
     });
 });
 
-app.listen(3000, () => console.log('Multi-file Java IDE running on http://localhost:3000'));
+server.listen(3000, () => console.log('Interactive Java IDE + Debugger running on http://localhost:3000'));
