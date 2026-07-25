@@ -6,11 +6,15 @@ public class Main {
         System.out.print("Enter your name: ");
         String name = scanner.nextLine();
         
-        int a = 10;
-        int b = 20;
+        System.out.print("Enter first number: ");
+        int a = scanner.nextInt();
+        
+        System.out.print("Enter second number: ");
+        int b = scanner.nextInt();
+        
         int sum = calculateSum(a, b);
         
-        System.out.println("Hello " + name + ", sum is: " + sum);
+        System.out.println("\nHello " + name + ", the calculated sum is: " + sum);
     }
 
     public static int calculateSum(int x, int y) {
