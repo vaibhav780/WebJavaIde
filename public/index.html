@@ -2,137 +2,271 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Web Java IDE with Autocomplete</title>
+    <title>Java Web IDE - Multi-file Workspace</title>
     <link rel="stylesheet" data-name="vs/editor" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.38.0/min/vs/editor/editor.main.min.css">
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 20px; background: #1e1e1e; color: #fff; }
-        .controls { margin-bottom: 15px; display: flex; gap: 10px; align-items: center; }
-        input { padding: 8px 12px; width: 350px; background: #2d2d2d; border: 1px solid #454545; color: #fff; border-radius: 4px; }
-        button { padding: 8px 16px; background: #0e639c; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; }
-        button:hover { background: #1177bb; }
-        #editor { height: 450px; border: 1px solid #454545; border-radius: 4px; }
-        #output { height: 160px; background: #000; color: #00ff66; padding: 12px; margin-top: 15px; font-family: 'Courier New', Courier, monospace; overflow-y: auto; white-space: pre-wrap; border-radius: 4px; border: 1px solid #333; }
+        * { box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; padding: 15px; background: #1e1e1e; color: #fff; height: 100vh; display: flex; flex-direction: column; }
+        
+        .top-bar { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; }
+        input, select { padding: 8px 12px; background: #2d2d2d; border: 1px solid #454545; color: #fff; border-radius: 4px; }
+        button { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; color: white; }
+        .btn-run { background: #0e639c; }
+        .btn-run:hover { background: #1177bb; }
+        .btn-test { background: #28a745; }
+        .btn-test:hover { background: #218838; }
+
+        .workspace-container { display: flex; flex: 1; gap: 12px; min-height: 0; }
+
+        /* Sidebar File Tree */
+        .sidebar { width: 260px; background: #252526; border: 1px solid #3c3c3c; border-radius: 4px; display: flex; flex-direction: column; }
+        .sidebar-header { padding: 10px; font-weight: bold; background: #2d2d2d; border-bottom: 1px solid #3c3c3c; display: flex; justify-content: space-between; align-items: center; }
+        .file-list { flex: 1; overflow-y: auto; padding: 5px 0; }
+        .file-item { padding: 6px 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+        .file-item:hover { background: #2a2d2e; }
+        .file-item.active { background: #37373d; font-weight: bold; color: #4ec9b0; }
+        .delete-btn { color: #888; cursor: pointer; font-size: 11px; }
+        .delete-btn:hover { color: #f48771; }
+
+        /* Main Workspace & Output */
+        .main-pane { flex: 1; display: flex; flex-direction: column; gap: 10px; }
+        #editor { flex: 2; border: 1px solid #3c3c3c; border-radius: 4px; min-height: 300px; }
+        
+        .output-pane { flex: 1; background: #1e1e1e; border: 1px solid #3c3c3c; border-radius: 4px; display: flex; flex-direction: column; }
+        .output-header { background: #2d2d2d; padding: 6px 12px; font-weight: bold; font-size: 12px; border-bottom: 1px solid #3c3c3c; }
+        #console-output { flex: 1; background: #000; color: #00ff66; padding: 10px; font-family: 'Courier New', monospace; overflow-y: auto; white-space: pre-wrap; margin: 0; }
+
+        /* Dashboard Styling */
+        .stats-bar { display: flex; gap: 15px; padding: 8px 10px; font-weight: bold; border-bottom: 1px solid #333; font-size: 13px; }
+        .test-card { background: #252526; border-left: 4px solid #454545; padding: 8px; margin: 6px; border-radius: 2px; }
+        .test-card.passed { border-left-color: #28a745; }
+        .test-card.failed { border-left-color: #dc3545; }
+        .test-error { color: #f48771; font-family: monospace; font-size: 11px; margin-top: 5px; white-space: pre-wrap; background: #2d1616; padding: 6px; }
     </style>
 </head>
 <body>
 
-    <h2>Local Java Web IDE</h2>
-    
-    <div class="controls">
-        <input type="text" id="jdkPath" placeholder="JDK Path (auto-detected if blank)" />
-        <button onclick="runJavaCode()">Run Program</button>
-        <button onclick="formatCode()">Format (Shift+Alt+F)</button>
+    <div class="top-bar">
+        <input type="text" id="jdkPath" placeholder="JDK Path (auto-detected if blank)" style="width: 280px;" />
+        
+        <label style="font-size: 13px;">Target Class:</label>
+        <select id="targetClassSelect"></select>
+
+        <button class="btn-run" onclick="runCoreJava()">▶ Run Core Java</button>
+        <button class="btn-test" onclick="runJUnitTest()">🧪 Run JUnit Test</button>
     </div>
 
-    <div id="editor"></div>
-    <div id="output">Output will appear here...</div>
+    <div class="workspace-container">
+        <!-- Sidebar Tree View -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <span>PROJECT FILES</span>
+                <button style="padding: 2px 8px; font-size: 11px; background: #0e639c;" onclick="createNewFile()">+ New File</button>
+            </div>
+            <div id="fileList" class="file-list"></div>
+        </div>
+
+        <!-- Editor & Output -->
+        <div class="main-pane">
+            <div id="editor"></div>
+            
+            <div class="output-pane">
+                <div class="output-header">Execution & Test Console</div>
+                <div id="console-output">Output will appear here...</div>
+            </div>
+        </div>
+    </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.38.0/min/vs/loader.min.js"></script>
     <script>
         let editor;
+        let activeFileId = null;
+
+        // In-memory project files representation
+        let files = [
+            {
+                id: '1',
+                name: 'Main.java',
+                path: 'Main.java',
+                content: `public class Main {\n    public static void main(String[] args) {\n        Calculator calc = new Calculator();\n        System.out.println("2 + 3 = " + calc.add(2, 3));\n    }\n}`
+            },
+            {
+                id: '2',
+                name: 'Calculator.java',
+                path: 'Calculator.java',
+                content: `public class Calculator {\n    public int add(int a, int b) {\n        return a + b;\n    }\n    public int multiply(int a, int b) {\n        return a * b;\n    }\n}`
+            },
+            {
+                id: '3',
+                name: 'CalculatorTest.java',
+                path: 'CalculatorTest.java',
+                content: `import org.junit.jupiter.api.Test;\nimport static org.junit.jupiter.api.Assertions.*;\n\npublic class CalculatorTest {\n    @Test\n    void testAdd() {\n        Calculator calc = new Calculator();\n        assertEquals(5, calc.add(2, 3));\n    }\n\n    @Test\n    void testMultiply() {\n        Calculator calc = new Calculator();\n        assertEquals(6, calc.multiply(2, 3));\n    }\n}`
+            }
+        ];
 
         require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.38.0/min/vs' }});
         require(['vs/editor/editor.main'], function() {
-            
-            // -------------------------------------------------------------
-            // 1. REGISTER JAVA AUTOCOMPLETE PROVIDER
-            // -------------------------------------------------------------
+            // Register Basic Autocomplete
             monaco.languages.registerCompletionItemProvider('java', {
-                triggerCharacters: ['.', ' ', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'],
                 provideCompletionItems: function(model, position) {
-                    const lineContent = model.getLineContent(position.lineNumber);
-                    const lineUntilPosition = lineContent.substring(0, position.column - 1);
-
-                    const suggestions = [];
-
-                    // --- Scenario A: Suggestions after typing "System.out." ---
-                    if (lineUntilPosition.endsWith('System.out.')) {
-                        suggestions.push(
-                            { label: 'println', kind: monaco.languages.CompletionItemKind.Method, insertText: 'println("${1}");', insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'void System.out.println(String x)' },
-                            { label: 'print', kind: monaco.languages.CompletionItemKind.Method, insertText: 'print("${1}");', insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'void System.out.print(String x)' },
-                            { label: 'printf', kind: monaco.languages.CompletionItemKind.Method, insertText: 'printf("${1:format}", ${2:args});', insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'PrintStream System.out.printf(String format, Object... args)' }
-                        );
-                        return { suggestions: suggestions };
-                    }
-
-                    // --- Scenario B: Suggestions after typing "System." ---
-                    if (lineUntilPosition.endsWith('System.')) {
-                        suggestions.push(
-                            { label: 'out', kind: monaco.languages.CompletionItemKind.Property, insertText: 'out.', detail: 'PrintStream System.out' },
-                            { label: 'err', kind: monaco.languages.CompletionItemKind.Property, insertText: 'err.', detail: 'PrintStream System.err' },
-                            { label: 'currentTimeMillis()', kind: monaco.languages.CompletionItemKind.Method, insertText: 'currentTimeMillis()', detail: 'long System.currentTimeMillis()' }
-                        );
-                        return { suggestions: suggestions };
-                    }
-
-                    // --- Scenario C: Code Snippets & Keywords ---
-                    const javaSnippets = [
-                        { label: 'main', kind: monaco.languages.CompletionItemKind.Snippet, insertText: 'public static void main(String[] args) {\n\t${1}\n}', insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'public static void main method' },
-                        { label: 'sout', kind: monaco.languages.CompletionItemKind.Snippet, insertText: 'System.out.println("${1}");', insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'System.out.println()' },
-                        { label: 'fori', kind: monaco.languages.CompletionItemKind.Snippet, insertText: 'for (int ${1:i} = 0; ${1:i} < ${2:max}; ${1:i}++) {\n\t${3}\n}', insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'for loop' },
-                        { label: 'try-catch', kind: monaco.languages.CompletionItemKind.Snippet, insertText: 'try {\n\t${1}\n} catch (Exception e) {\n\te.printStackTrace();\n}', insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'try-catch block' },
-                        { label: 'public', kind: monaco.languages.CompletionItemKind.Keyword, insertText: 'public ' },
-                        { label: 'private', kind: monaco.languages.CompletionItemKind.Keyword, insertText: 'private ' },
-                        { label: 'class', kind: monaco.languages.CompletionItemKind.Keyword, insertText: 'class ' },
-                        { label: 'String', kind: monaco.languages.CompletionItemKind.Class, insertText: 'String ' },
-                        { label: 'Integer', kind: monaco.languages.CompletionItemKind.Class, insertText: 'Integer ' },
-                        { label: 'List', kind: monaco.languages.CompletionItemKind.Interface, insertText: 'List<${1:Type}> ${2:list} = new ArrayList<>();', insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet }
-                    ];
-
-                    return { suggestions: javaSnippets };
+                    return {
+                        suggestions: [
+                            { label: 'sout', kind: monaco.languages.CompletionItemKind.Snippet, insertText: 'System.out.println("${1}");', insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet },
+                            { label: 'main', kind: monaco.languages.CompletionItemKind.Snippet, insertText: 'public static void main(String[] args) {\n\t${1}\n}', insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet }
+                        ]
+                    };
                 }
             });
 
-            // Initialize Monaco Editor
             editor = monaco.editor.create(document.getElementById('editor'), {
-                value: `public class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello World!");\n    }\n}`,
                 language: 'java',
                 theme: 'vs-dark',
-                automaticLayout: true,
-                suggestOnTriggerCharacters: true,
-                quickSuggestions: true
+                automaticLayout: true
             });
-        });
 
-        // Auto-fetch JDK Path on load
-        window.addEventListener('DOMContentLoaded', async () => {
-            try {
-                const res = await fetch('/api/jdk-path');
-                const data = await res.json();
-                if (data.jdkPath) {
-                    document.getElementById('jdkPath').value = data.jdkPath;
+            // Save active editor content back to file array on change
+            editor.onDidChangeModelContent(() => {
+                if (activeFileId) {
+                    const currentFile = files.find(f => f.id === activeFileId);
+                    if (currentFile) currentFile.content = editor.getValue();
                 }
-            } catch (e) {
-                console.warn("Could not fetch default JDK path", e);
-            }
+            });
+
+            renderSidebar();
+            selectFile('1');
         });
 
-        function formatCode() {
-            editor.getAction('editor.action.formatDocument').run();
+        // Auto-fetch JDK path on load
+        window.addEventListener('DOMContentLoaded', async () => {
+            const res = await fetch('/api/jdk-path');
+            const data = await res.json();
+            if (data.jdkPath) document.getElementById('jdkPath').value = data.jdkPath;
+        });
+
+        function renderSidebar() {
+            const listEl = document.getElementById('fileList');
+            const selectEl = document.getElementById('targetClassSelect');
+            
+            listEl.innerHTML = '';
+            selectEl.innerHTML = '';
+
+            files.forEach(file => {
+                // Render tree list
+                const item = document.createElement('div');
+                item.className = `file-item ${file.id === activeFileId ? 'active' : ''}`;
+                item.onclick = () => selectFile(file.id);
+                item.innerHTML = `
+                    <span>📄 ${file.path}</span>
+                    ${files.length > 1 ? `<span class="delete-btn" onclick="deleteFile(event, '${file.id}')">✕</span>` : ''}
+                `;
+                listEl.appendChild(item);
+
+                // Populate Class dropdown options
+                const className = file.path.replace(/\//g, '.').replace(/\.java$/, '');
+                const option = document.createElement('option');
+                option.value = className;
+                option.textContent = className;
+                selectEl.appendChild(option);
+            });
         }
 
-        async function runJavaCode() {
-            const jdkPath = document.getElementById('jdkPath').value;
-            const code = editor.getValue();
-            const outputDiv = document.getElementById('output');
-            
-            outputDiv.textContent = "Compiling and running...";
+        function selectFile(id) {
+            activeFileId = id;
+            const file = files.find(f => f.id === id);
+            if (file && editor) {
+                editor.setValue(file.content);
+            }
+            renderSidebar();
+        }
 
-            // Extract public class name dynamically
-            const match = code.match(/public\s+class\s+(\w+)/);
-            const className = match ? match[1] : 'Main';
+        function createNewFile() {
+            const filePath = prompt("Enter file path (e.g., com/example/Service.java or Helper.java):");
+            if (!filePath || !filePath.endsWith('.java')) {
+                alert("Please enter a valid .java file name.");
+                return;
+            }
+
+            const fileName = filePath.split('/').pop();
+            const className = fileName.replace('.java', '');
+            
+            const newFile = {
+                id: Date.now().toString(),
+                name: fileName,
+                path: filePath,
+                content: `public class ${className} {\n\n}`
+            };
+
+            files.push(newFile);
+            selectFile(newFile.id);
+        }
+
+        function deleteFile(event, id) {
+            event.stopPropagation();
+            files = files.filter(f => f.id !== id);
+            if (activeFileId === id) {
+                selectFile(files[0].id);
+            } else {
+                renderSidebar();
+            }
+        }
+
+        // --- RUN CORE JAVA PROGRAM ---
+        async function runCoreJava() {
+            const jdkPath = document.getElementById('jdkPath').value;
+            const mainClass = document.getElementById('targetClassSelect').value;
+            const consoleDiv = document.getElementById('console-output');
+
+            consoleDiv.textContent = "Compiling project and running " + mainClass + "...";
 
             try {
                 const response = await fetch('/api/run', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ jdkPath, code, className })
+                    body: JSON.stringify({ jdkPath, files, mainClass })
                 });
 
                 const data = await response.json();
-                outputDiv.textContent = data.output;
+                consoleDiv.textContent = data.output;
             } catch (err) {
-                outputDiv.textContent = "Error communicating with server: " + err.message;
+                consoleDiv.textContent = "Error executing request: " + err.message;
+            }
+        }
+
+        // --- RUN JUNIT TEST ---
+        async function runJUnitTest() {
+            const jdkPath = document.getElementById('jdkPath').value;
+            const testClass = document.getElementById('targetClassSelect').value;
+            const consoleDiv = document.getElementById('console-output');
+
+            consoleDiv.textContent = "Compiling project and running JUnit test suite: " + testClass + "...";
+
+            try {
+                const response = await fetch('/api/test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ jdkPath, files, testClass })
+                });
+
+                const data = await response.json();
+
+                if (!data.success) {
+                    consoleDiv.textContent = "Compilation/Execution Error:\n" + data.output;
+                    return;
+                }
+
+                const r = data.results;
+                const passedCount = r.total - r.failures - r.errors - r.skipped;
+
+                let outputHtml = `JUnit Execution Summary:\nPassed: ${passedCount}/${r.total} | Failed: ${r.failures} | Time: ${r.time}s\n\n`;
+                
+                r.tests.forEach(t => {
+                    outputHtml += `[${t.passed ? 'PASSED' : 'FAILED'}] ${t.name} (${t.time}s)\n`;
+                    if (t.message) outputHtml += `   └── Error: ${t.message}\n`;
+                });
+
+                consoleDiv.textContent = outputHtml;
+            } catch (err) {
+                consoleDiv.textContent = "Error executing test request: " + err.message;
             }
         }
     </script>
