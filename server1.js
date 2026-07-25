@@ -91,4 +91,5 @@ app.post('/api/run', (req, res) => {
     });
 });
 
-app.listen(3000, () => console.log('Local Java IDE running on http://localhost:3000'));
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => console.log(`Local Java IDE running on http://localhost:${PORT}`));
