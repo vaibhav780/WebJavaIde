@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Web Java IDE</title>
+    <!-- Load Monaco Editor CDN -->
+    <link rel="stylesheet" data-name="vs/editor" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.38.0/min/vs/editor/editor.main.min.css">
+    <style>
+        body { font-family: sans-serif; margin: 20px; background: #1e1e1e; color: #fff; }
+        .controls { margin-bottom: 15px; display: flex; gap: 10px; }
+        input { padding: 8px; width: 300px; }
+        button { padding: 8px 16px; background: #0e639c; color: white; border: none; cursor: pointer; }
+        #editor { height: 400px; border: 1px solid #444; }
+        #output { height: 150px; background: #000; color: #0f0; padding: 10px; margin-top: 15px; font-family: monospace; overflow-y: auto; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+
+    <h2>Local Java Web IDE</h2>
+    
+    <div class="controls">
+        <input type="text" id="jdkPath" placeholder="JDK Path (e.g., C:\Program Files\Java\jdk-21)" />
+        <button onclick="runJavaCode()">Run Program</button>
+        <button onclick="formatCode()">Format Code</button>
+    </div>
+
+    <div id="editor"></div>
+    <div id="output">Output will appear here...</div>
+
+    <!-- Monaco Editor Loader Script -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.38.0/min/vs/loader.min.js"></script>
+    <script>
+        let editor;
+
+        require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.38.0/min/vs' }});
+        require(['vs/editor/editor.main'], function() {
+            editor = monaco.editor.create(document.getElementById('editor'), {
+                value: `public class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello World from Web IDE!");\n    }\n}`,
+                language: 'java',
+                theme: 'vs-dark',
+                automaticLayout: true
+            });
+        });
+
+        function formatCode() {
+            editor.getAction('editor.action.formatDocument').run();
+        }
+
+        async function runJavaCode() {
+            const jdkPath = document.getElementById('jdkPath').value;
+            const code = editor.getValue();
+            const outputDiv = document.getElementById('output');
+            
+            outputDiv.textContent = "Compiling and running...";
+
+            try {
+                const response = await fetch('/api/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ jdkPath, code, className: 'Main' })
+                });
+
+                const data = await response.json();
+                outputDiv.textContent = data.output;
+            } catch (err) {
+                outputDiv.textContent = "Error communicating with server: " + err.message;
+            }
+        }
+    </script>
+</body>
+</html>
