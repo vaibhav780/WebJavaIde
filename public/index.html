@@ -2,58 +2,109 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Web Java IDE</title>
-    <!-- Load Monaco Editor CDN -->
+    <title>Web Java IDE with Autocomplete</title>
     <link rel="stylesheet" data-name="vs/editor" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.38.0/min/vs/editor/editor.main.min.css">
     <style>
-        body { font-family: sans-serif; margin: 20px; background: #1e1e1e; color: #fff; }
-        .controls { margin-bottom: 15px; display: flex; gap: 10px; }
-        input { padding: 8px; width: 300px; }
-        button { padding: 8px 16px; background: #0e639c; color: white; border: none; cursor: pointer; }
-        #editor { height: 400px; border: 1px solid #444; }
-        #output { height: 150px; background: #000; color: #0f0; padding: 10px; margin-top: 15px; font-family: monospace; overflow-y: auto; white-space: pre-wrap; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 20px; background: #1e1e1e; color: #fff; }
+        .controls { margin-bottom: 15px; display: flex; gap: 10px; align-items: center; }
+        input { padding: 8px 12px; width: 350px; background: #2d2d2d; border: 1px solid #454545; color: #fff; border-radius: 4px; }
+        button { padding: 8px 16px; background: #0e639c; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; }
+        button:hover { background: #1177bb; }
+        #editor { height: 450px; border: 1px solid #454545; border-radius: 4px; }
+        #output { height: 160px; background: #000; color: #00ff66; padding: 12px; margin-top: 15px; font-family: 'Courier New', Courier, monospace; overflow-y: auto; white-space: pre-wrap; border-radius: 4px; border: 1px solid #333; }
     </style>
-    <script>
-        // Auto-fill input box with system JDK path on load
-window.addEventListener('DOMContentLoaded', async () => {
-    try {
-        const res = await fetch('/api/jdk-path');
-        const data = await res.json();
-        if (data.jdkPath) {
-            document.getElementById('jdkPath').value = data.jdkPath;
-        }
-    } catch (e) {
-        console.warn("Could not fetch default JDK path", e);
-    }
-});
-    </script>
 </head>
 <body>
 
     <h2>Local Java Web IDE</h2>
     
     <div class="controls">
-        <input type="text" id="jdkPath" placeholder="JDK Path (e.g., C:\Program Files\Java\jdk-21)" />
+        <input type="text" id="jdkPath" placeholder="JDK Path (auto-detected if blank)" />
         <button onclick="runJavaCode()">Run Program</button>
-        <button onclick="formatCode()">Format Code</button>
+        <button onclick="formatCode()">Format (Shift+Alt+F)</button>
     </div>
 
     <div id="editor"></div>
     <div id="output">Output will appear here...</div>
 
-    <!-- Monaco Editor Loader Script -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.38.0/min/vs/loader.min.js"></script>
     <script>
         let editor;
 
         require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.38.0/min/vs' }});
         require(['vs/editor/editor.main'], function() {
+            
+            // -------------------------------------------------------------
+            // 1. REGISTER JAVA AUTOCOMPLETE PROVIDER
+            // -------------------------------------------------------------
+            monaco.languages.registerCompletionItemProvider('java', {
+                triggerCharacters: ['.', ' ', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'],
+                provideCompletionItems: function(model, position) {
+                    const lineContent = model.getLineContent(position.lineNumber);
+                    const lineUntilPosition = lineContent.substring(0, position.column - 1);
+
+                    const suggestions = [];
+
+                    // --- Scenario A: Suggestions after typing "System.out." ---
+                    if (lineUntilPosition.endsWith('System.out.')) {
+                        suggestions.push(
+                            { label: 'println', kind: monaco.languages.CompletionItemKind.Method, insertText: 'println("${1}");', insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'void System.out.println(String x)' },
+                            { label: 'print', kind: monaco.languages.CompletionItemKind.Method, insertText: 'print("${1}");', insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'void System.out.print(String x)' },
+                            { label: 'printf', kind: monaco.languages.CompletionItemKind.Method, insertText: 'printf("${1:format}", ${2:args});', insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'PrintStream System.out.printf(String format, Object... args)' }
+                        );
+                        return { suggestions: suggestions };
+                    }
+
+                    // --- Scenario B: Suggestions after typing "System." ---
+                    if (lineUntilPosition.endsWith('System.')) {
+                        suggestions.push(
+                            { label: 'out', kind: monaco.languages.CompletionItemKind.Property, insertText: 'out.', detail: 'PrintStream System.out' },
+                            { label: 'err', kind: monaco.languages.CompletionItemKind.Property, insertText: 'err.', detail: 'PrintStream System.err' },
+                            { label: 'currentTimeMillis()', kind: monaco.languages.CompletionItemKind.Method, insertText: 'currentTimeMillis()', detail: 'long System.currentTimeMillis()' }
+                        );
+                        return { suggestions: suggestions };
+                    }
+
+                    // --- Scenario C: Code Snippets & Keywords ---
+                    const javaSnippets = [
+                        { label: 'main', kind: monaco.languages.CompletionItemKind.Snippet, insertText: 'public static void main(String[] args) {\n\t${1}\n}', insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'public static void main method' },
+                        { label: 'sout', kind: monaco.languages.CompletionItemKind.Snippet, insertText: 'System.out.println("${1}");', insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'System.out.println()' },
+                        { label: 'fori', kind: monaco.languages.CompletionItemKind.Snippet, insertText: 'for (int ${1:i} = 0; ${1:i} < ${2:max}; ${1:i}++) {\n\t${3}\n}', insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'for loop' },
+                        { label: 'try-catch', kind: monaco.languages.CompletionItemKind.Snippet, insertText: 'try {\n\t${1}\n} catch (Exception e) {\n\te.printStackTrace();\n}', insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, detail: 'try-catch block' },
+                        { label: 'public', kind: monaco.languages.CompletionItemKind.Keyword, insertText: 'public ' },
+                        { label: 'private', kind: monaco.languages.CompletionItemKind.Keyword, insertText: 'private ' },
+                        { label: 'class', kind: monaco.languages.CompletionItemKind.Keyword, insertText: 'class ' },
+                        { label: 'String', kind: monaco.languages.CompletionItemKind.Class, insertText: 'String ' },
+                        { label: 'Integer', kind: monaco.languages.CompletionItemKind.Class, insertText: 'Integer ' },
+                        { label: 'List', kind: monaco.languages.CompletionItemKind.Interface, insertText: 'List<${1:Type}> ${2:list} = new ArrayList<>();', insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet }
+                    ];
+
+                    return { suggestions: javaSnippets };
+                }
+            });
+
+            // Initialize Monaco Editor
             editor = monaco.editor.create(document.getElementById('editor'), {
-                value: `public class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello World from Web IDE!");\n    }\n}`,
+                value: `public class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello World!");\n    }\n}`,
                 language: 'java',
                 theme: 'vs-dark',
-                automaticLayout: true
+                automaticLayout: true,
+                suggestOnTriggerCharacters: true,
+                quickSuggestions: true
             });
+        });
+
+        // Auto-fetch JDK Path on load
+        window.addEventListener('DOMContentLoaded', async () => {
+            try {
+                const res = await fetch('/api/jdk-path');
+                const data = await res.json();
+                if (data.jdkPath) {
+                    document.getElementById('jdkPath').value = data.jdkPath;
+                }
+            } catch (e) {
+                console.warn("Could not fetch default JDK path", e);
+            }
         });
 
         function formatCode() {
@@ -67,11 +118,15 @@ window.addEventListener('DOMContentLoaded', async () => {
             
             outputDiv.textContent = "Compiling and running...";
 
+            // Extract public class name dynamically
+            const match = code.match(/public\s+class\s+(\w+)/);
+            const className = match ? match[1] : 'Main';
+
             try {
                 const response = await fetch('/api/run', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ jdkPath, code, className: 'Main' })
+                    body: JSON.stringify({ jdkPath, code, className })
                 });
 
                 const data = await response.json();
