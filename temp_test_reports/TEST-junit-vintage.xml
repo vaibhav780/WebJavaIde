@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="JUnit Vintage" tests="0" skipped="0" failures="0" errors="0" time="0.012" hostname="mictibpssd0074" timestamp="2026-07-27T18:17:43">
+<properties>
+<property name="file.encoding" value="Cp1252"/>
+<property name="file.separator" value="\"/>
+<property name="java.class.path" value="C:\MyCodes\WebJavaIde-main\WebJavaIde-main\temp_workspace;C:\MyCodes\WebJavaIde-main\WebJavaIde-main\lib\jcommander-1.82.jar;C:\MyCodes\WebJavaIde-main\WebJavaIde-main\lib\junit-platform-console-standalone-1.10.2.jar;C:\MyCodes\WebJavaIde-main\WebJavaIde-main\lib\slf4j-api-2.0.9.jar;C:\MyCodes\WebJavaIde-main\WebJavaIde-main\lib\testng-7.10.2.jar;C:\MyCodes\WebJavaIde-main\WebJavaIde-main\lib\testng-engine-1.0.5.jar"/>
+<property name="java.class.version" value="61.0"/>
+<property name="java.home" value="C:\Program Files\Java\jdk-17"/>
+<property name="java.io.tmpdir" value="C:\Users\vmuddebi\AppData\Local\Temp\"/>
+<property name="java.library.path" value="C:\Program Files\Java\jdk-17\bin;C:\Windows\Sun\Java\bin;C:\Windows\system32;C:\Windows;C:\MyCodes\WebJavaIde-main\WebJavaIde-main\node_modules\.bin;C:\MyCodes\WebJavaIde-main\node_modules\.bin;C:\MyCodes\node_modules\.bin;C:\node_modules\.bin;C:\Users\vmuddebi\AppData\Roaming\npm\node_modules\npm\node_modules\@npmcli\run-script\lib\node-gyp-bin;C:\Program Files\Eclipse Adoptium\jdk-25.0.3.9-hotspot\bin;C:\Program Files\Common Files\Oracle\Java\javapath;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH;C:\Program Files\Amazon\AWSCLIV2;C:\Python312\Scripts;C:\Python312;C:\ProgramData\chocolatey\bin;C:\Program Files (x86)\nodejs;C:\Program Files\PowerShell\7;C:\Program Files (x86)\Citrix\HDX\bin;C:\Program Files\Citrix\HDX\bin;C:\Program Files (x86)\Citrix\Workspace Environment Management Agent;C:\Program Files\Go\bin;C:\terraform;C:\Program Files\dotnet;C:\Program Files (x86)\Google\Cloud SDK\google-cloud-sdk\bin;C:\Program Files\VanDyke Software\SecureCRT;C:\Program Files\TortoiseSVN\bin;C:\Program Files\Microsoft VS Code\bin;C:\Program Files (x86)\Microsoft SQL Server\160\DTS\Binn;C:\Program Files\Azure Data Studio\bin;C:\Program Files (x86)\PowerShell\7;C:\Program Files\PuTTY;C:\Program Files (x86)\Common Files\Oracle\Java\javapath;C:\Program Files\Citrix\Agent\Bin;C:\Program Files\Microsoft SDKs\Azure\CLI2\wbin;C:\Program Files (x86)\Microsoft SQL Server\160\Tools\Binn;C:\Program Files\Microsoft SQL Server\160\Tools\Binn;C:\Program Files\Microsoft SQL Server\Client SDK\ODBC\170\Tools\Binn;C:\Program Files\Microsoft SQL Server\160\DTS\Binn;C:\apache-maven-3.9.12\bin;C:\Program Files\Java\jdk-17\bin;C:\Program Files\nodejs;C:\Users\vmuddebi\.local\bin;C:\Program Files\Git\cmd;C:\Program Files\OpenSSL-Win64\bin;C:\Program Files\Docker\Docker\resources\bin;C:\Users\vmuddebi\scoop\shims;C:\Users\vmuddebi\AppData\Local\Microsoft\WindowsApps;C:\Users\vmuddebi\AppData\Local\GitHubDesktop\bin;C:\Users\vmuddebi\AppData\Roaming\npm;C:\Users\vmuddebi\AppData\Local\Google\Cloud SDK\google-cloud-sdk\bin;C:\Users\vmuddebi\AppData\Local\PowerToys\DSCModules\;C:\Users\vmuddebi\AppData\Local\Programs\Ollama;."/>
+<property name="java.runtime.name" value="Java(TM) SE Runtime Environment"/>
+<property name="java.runtime.version" value="17.0.10+11-LTS-240"/>
+<property name="java.specification.name" value="Java Platform API Specification"/>
+<property name="java.specification.vendor" value="Oracle Corporation"/>
+<property name="java.specification.version" value="17"/>
+<property name="java.vendor" value="Oracle Corporation"/>
+<property name="java.vendor.url" value="https://java.oracle.com/"/>
+<property name="java.vendor.url.bug" value="https://bugreport.java.com/bugreport/"/>
+<property name="java.version" value="17.0.10"/>
+<property name="java.version.date" value="2024-01-16"/>
+<property name="java.vm.compressedOopsMode" value="Zero based"/>
+<property name="java.vm.info" value="mixed mode, sharing"/>
+<property name="java.vm.name" value="Java HotSpot(TM) 64-Bit Server VM"/>
+<property name="java.vm.specification.name" value="Java Virtual Machine Specification"/>
+<property name="java.vm.specification.vendor" value="Oracle Corporation"/>
+<property name="java.vm.specification.version" value="17"/>
+<property name="java.vm.vendor" value="Oracle Corporation"/>
+<property name="java.vm.version" value="17.0.10+11-LTS-240"/>
+<property name="jdk.debug" value="release"/>
+<property name="line.separator" value="
+"/>
+<property name="native.encoding" value="Cp1252"/>
+<property name="os.arch" value="amd64"/>
+<property name="os.name" value="Windows 11"/>
+<property name="os.version" value="10.0"/>
+<property name="path.separator" value=";"/>
+<property name="sun.arch.data.model" value="64"/>
+<property name="sun.boot.library.path" value="C:\Program Files\Java\jdk-17\bin"/>
+<property name="sun.cpu.endian" value="little"/>
+<property name="sun.cpu.isalist" value="amd64"/>
+<property name="sun.io.unicode.encoding" value="UnicodeLittle"/>
+<property name="sun.java.command" value="org.junit.platform.console.ConsoleLauncher execute --scan-class-path=C:\MyCodes\WebJavaIde-main\WebJavaIde-main\temp_workspace --include-classname=.* --reports-dir=C:\MyCodes\WebJavaIde-main\WebJavaIde-main\temp_test_reports --config=junit.platform.output.capture.stdout=true --config=junit.platform.output.capture.stderr=true --disable-banner"/>
+<property name="sun.java.launcher" value="SUN_STANDARD"/>
+<property name="sun.jnu.encoding" value="Cp1252"/>
+<property name="sun.management.compiler" value="HotSpot 64-Bit Tiered Compilers"/>
+<property name="sun.os.patch.level" value=""/>
+<property name="user.country" value="US"/>
+<property name="user.dir" value="C:\MyCodes\WebJavaIde-main\WebJavaIde-main"/>
+<property name="user.home" value="C:\Users\vmuddebi"/>
+<property name="user.language" value="en"/>
+<property name="user.name" value="vmuddebi"/>
+<property name="user.script" value=""/>
+<property name="user.timezone" value="Asia/Calcutta"/>
+<property name="user.variant" value=""/>
+</properties>
+<system-out><![CDATA[
+unique-id: [engine:junit-vintage]
+display-name: JUnit Vintage
+]]></system-out>
+</testsuite>

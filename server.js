@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const AdmZip = require('adm-zip');
+const xml2js = require('xml2js');
 
 const app = express();
 app.use(express.json());
@@ -130,12 +131,18 @@ function resolveMainClass(files, defaultMainClass) {
 }
 
 function setupWorkspace(files, workspaceDir) {
+    // The workspace is a single shared scratch dir that is never cleaned between
+    // requests. If we only overwrite the incoming files, stale .java/.class
+    // artifacts from deleted files linger — and `--scan-class-path` will keep
+    // running tests from classes the user already removed. Wipe it first so the
+    // on-disk workspace always mirrors exactly the current editor file set.
     try {
-        if (!fs.existsSync(workspaceDir)) {
-            fs.mkdirSync(workspaceDir, { recursive: true });
+        if (fs.existsSync(workspaceDir)) {
+            fs.rmSync(workspaceDir, { recursive: true, force: true });
         }
+        fs.mkdirSync(workspaceDir, { recursive: true });
     } catch (e) {
-        console.error("Error creating workspace directory:", e);
+        console.error("Error resetting workspace directory:", e);
     }
 
     const javaFiles = [];
@@ -190,6 +197,172 @@ function parseJavacOutput(output, files) {
         }
     }
     return markers;
+}
+
+// ---------------------------------------------------------------------------
+// Visual Execution Debugger: jdb output parsing
+// ---------------------------------------------------------------------------
+// jdb streams output in arbitrary chunks, so after every stop we issue the
+// interrogation commands (`locals`, `where`) followed by `print "<sentinel>"`.
+// The sentinel echoes back in stdout, letting us reliably detect when a block
+// is complete regardless of how the OS splits the stream into chunks. Note that
+// jdb evaluates `print` on the target VM, so its result reliably lands LAST —
+// after `locals`/`where` have finished printing. We therefore capture the whole
+// block up to the single sentinel and let the two parsers (whose line formats
+// are mutually exclusive) each pick out their own content.
+const STATE_SENTINEL = '___WJIDE_STATE_END___';
+
+// jdb prefixes the first line of a command's output with its prompt, e.g.
+// "main[1] args = ...". Strip any leading prompt(s) so line-anchored parsing works.
+function stripJdbPrompt(line) {
+    return line.replace(/^(?:[\w.$-]+\[\d+\]\s+)+/, '');
+}
+
+// Turn a raw jdb value into a typed descriptor for the visualizer.
+function inferVarType(rawValue) {
+    const v = (rawValue || '').trim();
+    const instMatch = v.match(/instance of ([\w.$]+(?:\[[0-9]*\])*)\s*\(id=(\d+)\)/);
+    if (instMatch) {
+        return { value: v, type: instMatch[1], isRef: true, refId: instMatch[2] };
+    }
+    if (/^".*"$/.test(v)) return { value: v, type: 'String', isRef: false };
+    if (/^'.*'$/.test(v)) return { value: v, type: 'char', isRef: false };
+    if (/^(true|false)$/.test(v)) return { value: v, type: 'boolean', isRef: false };
+    if (/^-?\d+$/.test(v)) return { value: v, type: 'int', isRef: false };
+    if (/^-?\d*\.\d+$/.test(v)) return { value: v, type: 'double', isRef: false };
+    if (v === 'null') return { value: v, type: 'null', isRef: false };
+    return { value: v, type: '', isRef: false };
+}
+
+// Parse the output of `locals` into {name, scope, value, type, isRef} entries.
+// Frame lines from `where` ("[1] Foo.bar (Foo.java:3)"), the source line, and the
+// breakpoint banner don't match the "name = value" shape, so they're ignored here.
+function parseLocals(text) {
+    const vars = [];
+    let scope = 'local';
+    for (const rawLine of (text || '').split('\n')) {
+        const t = stripJdbPrompt(rawLine.trim()).trim();
+        if (!t) continue;
+        if (/^Method arguments:?/i.test(t)) { scope = 'arg'; continue; }
+        if (/^Local variables:?/i.test(t)) { scope = 'local'; continue; }
+        const m = t.match(/^([\w$]+)\s*=\s*(.+)$/);
+        if (m && !m[1].includes('___') && !m[2].includes('___')) {
+            vars.push({ name: m[1], scope, ...inferVarType(m[2]) });
+        }
+    }
+    return vars;
+}
+
+// Parse the output of `where` into ordered call-stack frames.
+function parseStackFrames(text) {
+    const frames = [];
+    const re = /\[(\d+)\]\s+([\w.$]+)\.([\w$<>]+)\s*\(([^)]*?):(\d+)\)/g;
+    let m;
+    while ((m = re.exec(text || '')) !== null) {
+        frames.push({
+            index: parseInt(m[1], 10),
+            className: m[2],
+            method: m[3],
+            file: m[4],
+            line: parseInt(m[5], 10)
+        });
+    }
+    return frames;
+}
+
+// Best-effort parse of `dump <expr>` output into object fields.
+function parseDump(text, objName) {
+    const fields = [];
+    for (const rawLine of (text || '').split('\n')) {
+        const t = stripJdbPrompt(rawLine.trim()).trim();
+        if (!t || t.includes('___') || t === '}' || t.endsWith('{')) continue;
+        const m = t.match(/^([\w.$]+)\s*[:=]\s*(.+?),?$/);
+        if (m) {
+            let fname = m[1];
+            if (fname === objName) continue;
+            if (fname.includes('.')) fname = fname.split('.').pop();
+            fields.push({ name: fname, ...inferVarType(m[2]) });
+        }
+    }
+    return fields;
+}
+
+// Consume a chunk of jdb stdout, drive the interrogation state machine, and
+// emit structured `debug_state` / `debug_inspect_result` messages to the client.
+function handleJdbOutput(ws, chunk, defaultClass) {
+    const st = ws.dbg;
+    if (!st) return;
+    st.buffer += chunk;
+
+    // A fresh stop (breakpoint or completed step): capture location, then ask
+    // jdb for locals + stack, terminated by a single sentinel.
+    if (!st.capturing && (chunk.includes('Breakpoint hit:') || chunk.includes('Step completed:'))) {
+        const lineMatch = chunk.match(/line=(\d+)/);
+        const locMatch = chunk.match(/(?:Breakpoint hit|Step completed):\s*"thread=[^"]*",\s*([\w.$]+)\.([\w$<>]+)\(\)/);
+        st.pendingStop = {
+            line: lineMatch ? parseInt(lineMatch[1], 10) : null,
+            className: locMatch ? locMatch[1] : defaultClass,
+            method: locMatch ? locMatch[2] : ''
+        };
+        st.step = (st.step || 0) + 1;
+        st.capturing = true;
+        st.buffer = '';
+        const w = ws.runningJdbProcess && ws.runningJdbProcess.stdin;
+        if (w && w.writable) {
+            w.write('locals\n');
+            w.write('where\n');
+            w.write(`print "${STATE_SENTINEL}"\n`);
+        }
+        return;
+    }
+
+    // Interrogation complete once the sentinel echoes back. The block holds both
+    // the `locals` and `where` output; each parser extracts only its own lines.
+    if (st.capturing && st.buffer.includes(STATE_SENTINEL)) {
+        const block = st.buffer.slice(0, st.buffer.indexOf(STATE_SENTINEL));
+        const frames = parseStackFrames(block);
+        // The top frame is the authoritative current location; the stop banner
+        // can span chunk boundaries and be missed, so prefer the frame.
+        const top = frames[0] || {};
+        ws.send(JSON.stringify({
+            type: 'debug_state',
+            step: st.step,
+            line: top.line != null ? top.line : st.pendingStop.line,
+            className: top.className || st.pendingStop.className,
+            method: top.method || st.pendingStop.method,
+            variables: parseLocals(block),
+            frames
+        }));
+        st.capturing = false;
+        st.pendingStop = null;
+        st.buffer = '';
+    }
+
+    // On-demand object inspection (`dump`). Unlike locals/where, jdb's `dump`
+    // output can arrive AFTER a trailing sentinel, so we detect completion
+    // structurally: a closing brace for objects/arrays, or an error message.
+    if (st.inspecting) {
+        const hasObject = st.buffer.includes('{') && /\}\s*\r?\n/.test(st.buffer);
+        const hasError = /ParseException|Name unknown|Unable to|is not a valid|No local variable/i.test(st.buffer);
+        if (hasObject || hasError) {
+            emitInspect(ws);
+        }
+    }
+}
+
+// Emit the current inspection buffer as a debug_inspect_result and reset state.
+function emitInspect(ws) {
+    const st = ws.dbg;
+    if (!st || !st.inspecting) return;
+    if (st.inspectTimer) { clearTimeout(st.inspectTimer); st.inspectTimer = null; }
+    ws.send(JSON.stringify({
+        type: 'debug_inspect_result',
+        name: st.inspectName,
+        fields: parseDump(st.buffer, st.inspectName),
+        raw: st.buffer
+    }));
+    st.inspecting = false;
+    st.buffer = '';
 }
 
 // 1. JDK Path Detection
@@ -264,6 +437,88 @@ app.post('/api/run', (req, res) => {
     }
 });
 
+// Strip ANSI colour codes so the raw console view is readable.
+function stripAnsi(s) {
+    return (s || '').replace(/\x1B\[[0-9;]*m/g, '');
+}
+
+// Map a JUnit-Platform suite name to a human framework label.
+function frameworkOf(suiteName) {
+    const n = (suiteName || '').toLowerCase();
+    if (n.includes('testng')) return 'TestNG';
+    if (n.includes('vintage')) return 'JUnit 4';
+    if (n.includes('jupiter')) return 'JUnit 5';
+    return suiteName || 'Tests';
+}
+
+// Parse the legacy JUnit-XML reports the ConsoleLauncher writes into reportsDir
+// into a flat, structured list of test cases the frontend can render visually.
+async function parseTestReports(reportsDir) {
+    const tests = [];
+    let fileNames = [];
+    try {
+        fileNames = fs.readdirSync(reportsDir).filter(f => f.startsWith('TEST-') && f.endsWith('.xml'));
+    } catch (e) {
+        return tests;
+    }
+    const parser = new xml2js.Parser({ explicitArray: true, trim: false });
+    for (const fileName of fileNames) {
+        let doc;
+        try {
+            doc = await parser.parseStringPromise(fs.readFileSync(path.join(reportsDir, fileName), 'utf8'));
+        } catch (e) {
+            continue;
+        }
+        const suite = doc && doc.testsuite;
+        if (!suite) continue;
+        const suiteName = (suite.$ && suite.$.name) || fileName.replace(/^TEST-|\.xml$/g, '');
+        // The legacy writer emits several <system-out> blocks per test: the first
+        // is always JUnit's own report metadata (unique-id/display-name); the real
+        // captured program output (System.out.println) lives in the later blocks.
+        // Strip the metadata lines and join whatever real output remains.
+        const cleanOut = (arr) => (arr || [])
+            .map(block => (block || '').split(/\r?\n/)
+                .filter(l => {
+                    const t = l.trim();
+                    return t && !t.startsWith('unique-id:') && !t.startsWith('display-name:');
+                })
+                .join('\n'))
+            .filter(s => s.trim())
+            .join('\n')
+            .trim();
+        for (const tc of (suite.testcase || [])) {
+            const attr = tc.$ || {};
+            let status = 'passed', message = '', type = '', stack = '';
+            const readNode = (node) => {
+                if (!node) return;
+                if (node.$) { message = node.$.message || ''; type = node.$.type || ''; }
+                stack = (node && node._) ? node._ : (typeof node === 'string' ? node : '');
+            };
+            if (tc.failure) { status = 'failed'; readNode(tc.failure[0]); }
+            else if (tc.error) { status = 'failed'; readNode(tc.error[0]); }
+            else if (tc.skipped) {
+                status = 'skipped';
+                const sk = tc.skipped[0];
+                if (sk && sk.$) message = sk.$.message || '';
+            }
+            tests.push({
+                suite: suiteName,
+                framework: frameworkOf(suiteName),
+                className: attr.classname || '',
+                name: (attr.name || '').replace(/\(\)\s*$/, ''),
+                time: parseFloat(attr.time || '0') || 0,
+                status,
+                message: (message || '').trim(),
+                type: (type || '').trim(),
+                stack: (stack || '').trim(),
+                stdout: cleanOut(tc['system-out']),
+                stderr: cleanOut(tc['system-err'])
+            });
+        }
+    }
+    return tests;
+}
+
 // 4. JUnit 5 Unit Test Runner Endpoint
 app.post('/api/test', (req, res) => {
     try {
@@ -280,6 +535,12 @@ app.post('/api/test', (req, res) => {
         const classpath = getClasspath(tempDir);
         const compileArgs = ['-cp', classpath, '-d', tempDir, ...javaFiles];
 
+        // Fresh reports dir each run so we never parse a previous run's results.
+        const reportsDir = path.join(__dirname, 'temp_test_reports');
+        try {
+            if (fs.existsSync(reportsDir)) fs.rmSync(reportsDir, { recursive: true, force: true });
+        } catch (e) {}
+
         execFile(javacBin, compileArgs, (compileErr, stdout, stderr) => {
             if (compileErr) {
                 return res.json({ success: false, output: `Compilation Error:\n${stderr || stdout || compileErr.message}` });
@@ -289,33 +550,63 @@ app.post('/api/test', (req, res) => {
                 return res.json({ success: false, output: `JUnit JAR not found at ${JUNIT_JAR}` });
             }
 
+            // Run the JUnit Platform ConsoleLauncher via -cp (not -jar) so that
+            // every jar in lib/ is on the JVM classpath. The platform discovers
+            // test engines through ServiceLoader on the classpath, so dropping the
+            // TestNG engine + testng jars into lib/ makes @org.testng...Test methods
+            // run through this same endpoint. JUnit Jupiter/Vintage keep working
+            // because they are bundled inside the standalone jar.
             const junitArgs = [
-                '-jar', JUNIT_JAR,
-                '--class-path', tempDir,
-                '--scan-class-path',
+                '-cp', classpath,
+                'org.junit.platform.console.ConsoleLauncher',
+                'execute',
+                `--scan-class-path=${tempDir}`,
+                // By default the ConsoleLauncher only scans classes whose names match
+                // ^(Test.*|.+[.$]Test.*|.*Tests?)$, so a test class named e.g. "Calc"
+                // or "MyTestng" is silently skipped. Include every class so discovery
+                // is driven purely by annotations (@Test), not by class-name convention.
+                '--include-classname=.*',
+                // Write structured JUnit-XML reports we parse for the visual view,
+                // and capture each test's stdout/stderr so we can show program output.
+                `--reports-dir=${reportsDir}`,
+                '--config=junit.platform.output.capture.stdout=true',
+                '--config=junit.platform.output.capture.stderr=true',
                 '--disable-banner'
             ];
 
-            execFile(javaBin, junitArgs, (testErr, testStdout, testStderr) => {
+            execFile(javaBin, junitArgs, async (testErr, testStdout, testStderr) => {
                 const duration = Date.now() - startTime;
-                const fullOutput = (testStdout || '') + '\n' + (testStderr || '');
-                
-                const passedMatch = fullOutput.match(/(\d+)\s+tests successful/);
-                const failedMatch = fullOutput.match(/(\d+)\s+tests failed/);
-                const foundMatch = fullOutput.match(/(\d+)\s+tests found/);
+                const fullOutput = stripAnsi((testStdout || '') + '\n' + (testStderr || ''));
 
-                const passedCount = passedMatch ? parseInt(passedMatch[1]) : 0;
-                const failedCount = failedMatch ? parseInt(failedMatch[1]) : 0;
-                const totalCount = foundMatch ? parseInt(foundMatch[1]) : (passedCount + failedCount);
+                const tests = await parseTestReports(reportsDir);
+
+                let passedCount, failedCount, skippedCount, totalCount;
+                if (tests.length) {
+                    passedCount = tests.filter(t => t.status === 'passed').length;
+                    failedCount = tests.filter(t => t.status === 'failed').length;
+                    skippedCount = tests.filter(t => t.status === 'skipped').length;
+                    totalCount = tests.length;
+                } else {
+                    // Fallback to summary text if no reports were produced.
+                    const passedMatch = fullOutput.match(/(\d+)\s+tests successful/);
+                    const failedMatch = fullOutput.match(/(\d+)\s+tests failed/);
+                    const foundMatch = fullOutput.match(/(\d+)\s+tests found/);
+                    passedCount = passedMatch ? parseInt(passedMatch[1]) : 0;
+                    failedCount = failedMatch ? parseInt(failedMatch[1]) : 0;
+                    skippedCount = 0;
+                    totalCount = foundMatch ? parseInt(foundMatch[1]) : (passedCount + failedCount);
+                }
 
                 res.json({
                     success: failedCount === 0,
                     output: fullOutput,
                     duration,
+                    tests,
                     summary: {
                         total: totalCount,
                         passed: passedCount,
-                        failed: failedCount
+                        failed: failedCount,
+                        skipped: skippedCount
                     }
                 });
             });
@@ -352,28 +643,64 @@ app.post('/api/dependencies/add', (req, res) => {
 
     const filename = jarName || path.basename(url) || `dep-${Date.now()}.jar`;
     const dest = path.join(libDir, filename);
+    let responded = false;
+    const done = (status, body) => {
+        if (responded) return;
+        responded = true;
+        res.status(status).json(body);
+    };
 
-    const file = fs.createWriteStream(dest);
-    https.get(url, (response) => {
-        if (response.statusCode === 302 || response.statusCode === 301) {
-            https.get(response.headers.location, (res2) => {
-                res2.pipe(file);
-                file.on('finish', () => {
-                    file.close();
-                    res.json({ success: true, message: `Added ${filename}` });
+    // Follow redirects, reject non-200 responses, and verify the payload is
+    // actually a jar/zip (magic bytes "PK") before keeping it. Without these
+    // checks a 404 HTML page gets written as a .jar and later breaks javac
+    // with "zip END header not found".
+    const download = (targetUrl, redirectsLeft) => {
+        https.get(targetUrl, (response) => {
+            const status = response.statusCode || 0;
+
+            if ((status === 301 || status === 302 || status === 303 || status === 307 || status === 308) && response.headers.location) {
+                response.resume(); // drain
+                if (redirectsLeft <= 0) return done(502, { error: `Too many redirects for ${filename}` });
+                return download(new URL(response.headers.location, targetUrl).toString(), redirectsLeft - 1);
+            }
+
+            if (status !== 200) {
+                response.resume(); // drain, do not write the error body
+                return done(502, { error: `Download failed for ${filename}: HTTP ${status} from ${targetUrl}` });
+            }
+
+            const file = fs.createWriteStream(dest);
+            let firstBytesChecked = false;
+            let looksLikeZip = false;
+
+            response.on('data', (chunk) => {
+                if (!firstBytesChecked && chunk.length >= 2) {
+                    firstBytesChecked = true;
+                    looksLikeZip = chunk[0] === 0x50 && chunk[1] === 0x4b; // "PK"
+                }
+            });
+            response.pipe(file);
+
+            file.on('finish', () => {
+                file.close(() => {
+                    if (!looksLikeZip) {
+                        fs.unlink(dest, () => {});
+                        return done(502, { error: `Download for ${filename} was not a valid JAR (got non-zip content from ${targetUrl}). Check the URL/version.` });
+                    }
+                    done(200, { success: true, message: `Added ${filename}` });
                 });
             });
-        } else {
-            response.pipe(file);
-            file.on('finish', () => {
-                file.close();
-                res.json({ success: true, message: `Added ${filename}` });
+            file.on('error', (err) => {
+                fs.unlink(dest, () => {});
+                done(500, { error: err.message });
             });
-        }
-    }).on('error', (err) => {
-        fs.unlink(dest, () => {});
-        res.status(500).json({ error: err.message });
-    });
+        }).on('error', (err) => {
+            fs.unlink(dest, () => {});
+            done(500, { error: err.message });
+        });
+    };
+
+    download(url, 5);
 });
 
 // 6. AI Code Assistant Endpoints
@@ -595,33 +922,13 @@ wss.on('connection', (ws) => {
                         return;
                     }
 
+                    ws.dbg = { buffer: '', step: 0, capturing: false, inspecting: false, inspectName: '', pendingStop: null };
                     ws.runningJdbProcess = spawn(jdbBin, ['-classpath', classpath, targetMainClass]);
 
                     ws.runningJdbProcess.stdout.on('data', (d) => {
                         const str = d.toString();
                         ws.send(JSON.stringify({ type: 'output', data: str.replace(/\n/g, '\r\n') }));
-
-                        if (str.includes('Breakpoint hit:') || str.includes('Step completed:')) {
-                            const lineMatch = str.match(/line=(\d+)/);
-                            const classMatch = str.match(/thread=.*?, ([\w\.]+)\./);
-                            
-                            if (ws.runningJdbProcess && ws.runningJdbProcess.stdin) {
-                                ws.runningJdbProcess.stdin.write('locals\n');
-                                ws.runningJdbProcess.stdin.write('where\n');
-                            }
-
-                            ws.send(JSON.stringify({
-                                type: 'debug_event',
-                                event: 'stopped',
-                                line: lineMatch ? parseInt(lineMatch[1]) : null,
-                                className: classMatch ? classMatch[1] : targetMainClass,
-                                raw: str
-                            }));
-                        }
-
-                        if (str.includes('Local variables:')) {
-                            ws.send(JSON.stringify({ type: 'debug_vars', data: str }));
-                        }
+                        handleJdbOutput(ws, str, targetMainClass);
                     });
 
                     ws.runningJdbProcess.on('exit', (code) => {
@@ -644,6 +951,29 @@ wss.on('connection', (ws) => {
                 if (ws.runningJdbProcess && ws.runningJdbProcess.stdin && ws.runningJdbProcess.stdin.writable) {
                     ws.runningJdbProcess.stdin.write(`${data.command}\n`);
                 }
+            }
+
+            // Inspect an object/array in the current frame via jdb `dump`.
+            if (data.type === 'debug_inspect') {
+                const expr = (data.expr || '').trim();
+                if (expr && ws.dbg && !ws.dbg.capturing && ws.runningJdbProcess && ws.runningJdbProcess.stdin && ws.runningJdbProcess.stdin.writable) {
+                    ws.dbg.inspecting = true;
+                    ws.dbg.inspectName = expr;
+                    ws.dbg.buffer = '';
+                    ws.runningJdbProcess.stdin.write(`dump ${expr}\n`);
+                    // Fallback: emit whatever we captured if jdb output stalls.
+                    if (ws.dbg.inspectTimer) clearTimeout(ws.dbg.inspectTimer);
+                    ws.dbg.inspectTimer = setTimeout(() => emitInspect(ws), 2000);
+                }
+            }
+
+            // Stop the debug session and tear down the jdb process.
+            if (data.type === 'debug_stop') {
+                if (ws.runningJdbProcess) {
+                    try { ws.runningJdbProcess.kill('SIGKILL'); } catch (e) {}
+                    ws.runningJdbProcess = null;
+                }
+                ws.dbg = null;
             }
 
         } catch (e) {
